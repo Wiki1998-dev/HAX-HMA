@@ -1,5 +1,41 @@
 # Changelog
 
+## Phase 2: Gradient SHAP on SNAX Cluster (2025-04)
+
+### Python Reference Implementation
+- Implemented `gradient_shap()`, `gradient_shap_analytical()`, `expected_gradients()`,
+  `shap_interaction_values()` in `src/xai/shap/gradient_shap_reference.py`
+- All 13 pytest tests passing (`tests/test_shap_reference.py`)
+- Test classes: TestGradientSHAP (6), TestAnalyticalSHAP (3), TestExpectedGradients (4)
+- Verified SHAP completeness axiom: sum(attr) ≈ f(x) - E[f(baselines)]
+
+### SNAX C Kernel Development
+- Created `snax_cluster/sw/xai/shap/src/shap.h` — header-only kernel library:
+  - `shap_interpolate()` — baseline-input interpolation
+  - `shap_forward_fc()` — GAP + FC forward pass
+  - `shap_backward_fc()` — gradient computation (constant for linear model)
+  - `shap_accumulate()` — per-sample attribution accumulation
+  - `shap_normalize()` — final division by N
+  - `shap_gradient_full()` — orchestrator with per-stage cycle profiling
+- Created `snax_cluster/sw/xai/shap/src/main.c` — test harness with DMA,
+  per-stage cycle breakdown printing, and BIST verification
+- Created `snax_cluster/sw/xai/shap/data/datagen.py` — generates baselines,
+  alphas, and golden SHAP output
+- Parameters: h=4, w=4, K=16, C=10, n_samples=16, tolerance=1e-2
+
+### Verification Results
+- **Total cycles**: 182,297 on RISC-V scalar core (float32, N=16 samples)
+- **Per-sample**: ~11,394 cycles average
+- **5x over initial estimate** — explained by loop-carried FP dependencies,
+  fdiv.s latency, and loop overhead (see PHASE2_DESIGN.md)
+- **BIST**: pending per-stage breakdown from instrumented kernel
+
+### Design Documentation
+- `docs/phase2/PHASE2_DESIGN.md`: async dispatch architecture, double-buffering
+  strategy, TCDM memory layout, CSR fire-and-forget pattern
+
+---
+
 ## Phase 1: Grad-CAM on SNAX Cluster (2025-03 to 2025-04)
 
 ### Python Reference Implementation

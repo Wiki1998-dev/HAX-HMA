@@ -52,15 +52,20 @@ int main() {
 
     // Compute on core 0
     if (snrt_cluster_core_idx() == 0) {
-        uint32_t t_start = snrt_mcycle();
+        shap_profile_t prof;
 
         shap_gradient_full(local_fmaps, local_wfc, local_baselines,
                            local_alphas, local_attr, local_scratch, H, W,
-                           K_CH, N_CLASSES, N_SAMPLES, TARGET_CLASS);
+                           K_CH, N_CLASSES, N_SAMPLES, TARGET_CLASS, &prof);
 
-        uint32_t t_end = snrt_mcycle();
-        printf("SHAP Cycles: total=%u (N=%u samples, H=%u W=%u K=%u C=%u)\n",
-               t_end - t_start, N_SAMPLES, H, W, K_CH, N_CLASSES);
+        printf("SHAP Cycles: total=%u (N=%u, H=%u W=%u K=%u C=%u)\n",
+               prof.total, N_SAMPLES, H, W, K_CH, N_CLASSES);
+        printf("  zero=%u interp=%u fwd=%u bwd=%u accum=%u norm=%u\n",
+               prof.zero, prof.interpolate, prof.forward,
+               prof.backward, prof.accumulate, prof.normalize);
+        printf("  per-sample avg: interp=%u fwd=%u bwd=%u accum=%u\n",
+               prof.interpolate / N_SAMPLES, prof.forward / N_SAMPLES,
+               prof.backward / N_SAMPLES, prof.accumulate / N_SAMPLES);
     }
 
     snrt_cluster_hw_barrier();
