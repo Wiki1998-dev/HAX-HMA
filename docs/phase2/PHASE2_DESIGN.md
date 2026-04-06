@@ -83,8 +83,11 @@ shap_backward_fc(w_fc, grad, target_class, H, W, K, C);
 shap_accumulate(input, baseline, grad, attr_accum, H, W, K);
 ```
 
-### Cycle Budget Estimate (H=4, W=4, K=16, C=10, N=16 samples)
-| Step | FLOPs/sample | Est. cycles/sample | Total (N=16) |
+### Cycle Budget: Initial Estimate vs Measured
+
+**Initial estimate** assumed 1 cycle/FLOP (pipelined FPU):
+
+| Step | FLOPs/sample | Est. cycles/sample | Est. Total (N=16) |
 |------|-------------|-------------------|-------------|
 | Interpolate | 3*H*W*K = 768 | ~800 | ~12,800 |
 | Forward FC | H*W*K + K*C = 416 | ~500 | ~8,000 |
@@ -92,8 +95,24 @@ shap_accumulate(input, baseline, grad, attr_accum, H, W, K);
 | Accumulate | 3*H*W*K = 768 | ~800 | ~12,800 |
 | **Total** | | **~2,300** | **~36,800** |
 
-Division in normalization (the Phase 1 bottleneck) is avoided — SHAP doesn't
-require normalize-to-[0,1].
+**Measured: 182,297 cycles total** (4.95x over estimate).
+
+The gap is explained by:
+1. **Loop-carried dependencies**: Accumulation loops (`sum += ...`) create
+   serial FP chains. The Snitch FPU has multi-cycle latency even with 1-cycle
+   throughput, but dependent ops stall. Each accumulate iteration takes ~5-8
+   cycles instead of 1.
+2. **`fdiv.s` latency**: `inv_hw = 1.0f / (float)(H*W)` in both `forward_fc`
+   and `backward_fc` costs ~25 cycles per call. With 2 divisions × 16 samples
+   = 32 fdiv operations = ~800 cycles (minor but adds up).
+3. **Loop overhead**: Branch, index increment, comparison add ~3-5 cycles per
+   iteration. With 256 elements × 4 steps × 16 samples = ~16,384 iterations,
+   this contributes ~50-80k cycles.
+4. **Function call overhead**: Inline expansion helps, but the compiler may
+   not fully eliminate call/return sequences for all helpers.
+
+Per-stage cycle breakdown will be printed by the instrumented kernel
+(see `shap_profile_t` in shap.h).
 
 ## Phase 2b: INT8 Accelerated (Future)
 

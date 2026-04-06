@@ -88,6 +88,17 @@ static inline void shap_normalize(float *attr, uint32_t size,
     }
 }
 
+// Cycle breakdown counters for profiling.
+typedef struct {
+    uint32_t zero;        // zeroing accumulator
+    uint32_t interpolate; // total across all samples
+    uint32_t forward;     // total across all samples
+    uint32_t backward;    // total across all samples
+    uint32_t accumulate;  // total across all samples
+    uint32_t normalize;   // final division
+    uint32_t total;       // end-to-end
+} shap_profile_t;
+
 // Full Gradient SHAP computation (sequential, single core).
 // Processes all N samples end-to-end.
 //
@@ -97,13 +108,14 @@ static inline void shap_normalize(float *attr, uint32_t size,
 //   baselines:  (N*H*W*K,) float32 — N baselines concatenated
 //   alphas:     (N,) float32 — interpolation factors
 //   attr_out:   (H*W*K,) float32 — output SHAP attributions
-//   scratch:    workspace, >= (H*W*K + K + C) floats
+//   scratch:    workspace, >= (2*H*W*K + K + C) floats
+//   profile:    if non-NULL, filled with per-stage cycle counts
 //   H, W, K, C, N, target_class: dimensions
 static inline void shap_gradient_full(
     const float *fmaps, const float *w_fc, const float *baselines,
     const float *alphas, float *attr_out, float *scratch, uint32_t H,
     uint32_t W, uint32_t K, uint32_t C, uint32_t N,
-    uint32_t target_class) {
+    uint32_t target_class, shap_profile_t *profile) {
     uint32_t spatial_size = H * W * K;
 
     // Partition scratch buffer
@@ -112,29 +124,59 @@ static inline void shap_gradient_full(
     float *logits_buf = pooled_buf + K;       // C
     float *grad_buf = logits_buf + C;         // H*W*K
 
+    uint32_t t0, t1, t2, t3, t4, t5;
+    uint32_t cyc_interp = 0, cyc_fwd = 0, cyc_bwd = 0, cyc_accum = 0;
+
+    t0 = snrt_mcycle();
+
     // Zero output accumulator
     for (uint32_t i = 0; i < spatial_size; i++) {
         attr_out[i] = 0.0f;
     }
+
+    t1 = snrt_mcycle();
 
     for (uint32_t n = 0; n < N; n++) {
         const float *baseline = baselines + n * spatial_size;
         float alpha = alphas[n];
 
         // Step 1: interpolate
+        t2 = snrt_mcycle();
         shap_interpolate(fmaps, baseline, alpha, interp_buf, spatial_size);
+        t3 = snrt_mcycle();
+        cyc_interp += t3 - t2;
 
         // Step 2: forward pass (to validate — gradient is independent of input
         //         for linear model, but we compute it for generality)
         shap_forward_fc(interp_buf, w_fc, logits_buf, pooled_buf, H, W, K, C);
+        t4 = snrt_mcycle();
+        cyc_fwd += t4 - t3;
 
         // Step 3: backward pass
         shap_backward_fc(w_fc, grad_buf, target_class, H, W, K, C);
+        t5 = snrt_mcycle();
+        cyc_bwd += t5 - t4;
 
         // Step 4: accumulate attribution
         shap_accumulate(fmaps, baseline, grad_buf, attr_out, spatial_size);
+        uint32_t t6 = snrt_mcycle();
+        cyc_accum += t6 - t5;
     }
+
+    uint32_t t_prenorm = snrt_mcycle();
 
     // Step 5: normalize by N
     shap_normalize(attr_out, spatial_size, N);
+
+    uint32_t t_end = snrt_mcycle();
+
+    if (profile) {
+        profile->zero = t1 - t0;
+        profile->interpolate = cyc_interp;
+        profile->forward = cyc_fwd;
+        profile->backward = cyc_bwd;
+        profile->accumulate = cyc_accum;
+        profile->normalize = t_end - t_prenorm;
+        profile->total = t_end - t0;
+    }
 }
