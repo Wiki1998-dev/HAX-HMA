@@ -1,0 +1,52 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# External repos (full clones — too large; install separately)
+CFU-Playground/
+zigzag/
+dory/
+
+# SNAX: exclude everything except our additions
+# We use `git add -f` for specific SNAX files we want to track
+snax_cluster/
+
+# Build artifacts
+*.o
+*.d
+*.elf
+*.dump
+
+# Generated data (regenerate with datagen.py)
+data.h
+
+# Lock files
+pixi.lock
+*.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak
+*.orig
+
+# Legacy context files (superseded by CLAUDE.md)
+CFU_Playground_CLAUDE.md
+snax_cluster_CLAUDE.md
+src_xai_CLAUDE.md
+setup_claude_context.sh
+# Root-level copies (actual files are in src/ and tests/)
+/gradcam_reference.py
+/test_gradcam_reference.py
