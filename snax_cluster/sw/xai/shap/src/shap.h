@@ -99,8 +99,8 @@ typedef struct {
     uint32_t total;       // end-to-end
 } shap_profile_t;
 
-// Full Gradient SHAP computation (sequential, single core).
-// Processes all N samples end-to-end.
+// Full Gradient SHAP computation (sequential, single core, unoptimized).
+// Processes all N samples end-to-end. Retained for correctness reference.
 //
 // Args:
 //   fmaps:      input feature maps, (H*W*K,) float32
@@ -177,6 +177,82 @@ static inline void shap_gradient_full(
         profile->backward = cyc_bwd;
         profile->accumulate = cyc_accum;
         profile->normalize = t_end - t_prenorm;
+        profile->total = t_end - t0;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2b: Optimized Gradient SHAP (hoist backward + eliminate interp/fwd)
+// ---------------------------------------------------------------------------
+//
+// For a linear model (GAP + FC), the gradient d logit[c]/d fmaps[ij,k] is
+// constant: w_fc[k, c] / (H*W). It does not depend on the interpolated input.
+// Therefore:
+//   1. Compute the gradient ONCE before the sample loop (hoist backward).
+//   2. The forward pass + interpolation are unnecessary for attribution —
+//      the accumulation formula phi[i] += (x[i] - x'[i]) * grad[i] uses
+//      only the original input, the baseline, and the constant gradient.
+//   3. The sample loop reduces to a single accumulate-only pass per sample.
+//
+// Scratch requirement: H*W*K floats (grad_buf only).
+//
+// Expected savings vs Phase 2a (175,510 cycles):
+//   - Eliminate 15/16 backward calls:  ~-29,445 cycles
+//   - Eliminate ALL interpolation:     ~-48,702 cycles
+//   - Eliminate ALL forward passes:    ~-40,199 cycles
+//   - Remaining: zero + 1 backward + N accumulates + normalize
+//   - Estimated: ~55,000-60,000 cycles
+
+static inline void shap_gradient_optimized(
+    const float *fmaps, const float *w_fc, const float *baselines,
+    float *attr_out, float *scratch, uint32_t H, uint32_t W, uint32_t K,
+    uint32_t C, uint32_t N, uint32_t target_class,
+    shap_profile_t *profile) {
+    uint32_t spatial_size = H * W * K;
+
+    // Scratch: only need grad_buf (H*W*K floats)
+    float *grad_buf = scratch;
+
+    uint32_t t0, t1, t2, t3;
+    uint32_t cyc_accum = 0;
+
+    t0 = snrt_mcycle();
+
+    // Zero output accumulator
+    for (uint32_t i = 0; i < spatial_size; i++) {
+        attr_out[i] = 0.0f;
+    }
+
+    t1 = snrt_mcycle();
+
+    // Hoisted backward: compute constant gradient ONCE
+    shap_backward_fc(w_fc, grad_buf, target_class, H, W, K, C);
+
+    t2 = snrt_mcycle();
+
+    // Sample loop: accumulate only
+    for (uint32_t n = 0; n < N; n++) {
+        const float *baseline = baselines + n * spatial_size;
+        uint32_t ta = snrt_mcycle();
+        shap_accumulate(fmaps, baseline, grad_buf, attr_out, spatial_size);
+        uint32_t tb = snrt_mcycle();
+        cyc_accum += tb - ta;
+    }
+
+    t3 = snrt_mcycle();
+
+    // Normalize by N
+    shap_normalize(attr_out, spatial_size, N);
+
+    uint32_t t_end = snrt_mcycle();
+
+    if (profile) {
+        profile->zero = t1 - t0;
+        profile->interpolate = 0;
+        profile->forward = 0;
+        profile->backward = t2 - t1;
+        profile->accumulate = cyc_accum;
+        profile->normalize = t_end - t3;
         profile->total = t_end - t0;
     }
 }
