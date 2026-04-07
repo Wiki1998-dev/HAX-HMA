@@ -1,5 +1,35 @@
 # Changelog
 
+## Phase 3: Formal Verification of Quantized Neural Networks (2026-04)
+
+### Python Reference Implementation
+- Added `src/xai/formal/quantization.py` — INT8 quantization (symmetric + QVIP-style uniform)
+- Added `src/xai/formal/bound_propagation.py` — Interval arithmetic bound propagation
+- Added `src/xai/formal/qvip_verifier.py` — ILP-based robustness verification
+- Added `tests/test_formal_verification.py` — 33 tests (all passing)
+- Added `docs/phase3/PHASE3_DESIGN.md` — Design document
+
+### Key Features
+- QVIP encoding: QNN → ILP via piecewise constant functions for ReLU
+- Symmetric INT8 quantization matching SNAX GeMM scheme
+- Interval analysis prunes infeasible ReLU intervals (22-85% constraint reduction)
+- LP relaxation with triangle relaxation for crossing ReLU neurons
+- Maximum robustness radius via binary search (QVIP Algorithm 1)
+- XAI integration: saliency-guided verification of high-importance regions
+
+### Verification Properties
+- Local robustness: given input x ± r, does argmax(output) stay the same?
+- Quantization safety: does INT8 model agree with float32 on bounded inputs?
+- Counterexample generation: finds adversarial input if not robust
+
+### Research Narrative
+Phase 1 (Grad-CAM) → WHERE the model looks →
+Phase 3 (Verification) → SAFE after INT8 quantization →
+Phase 2 (SHAP) → WHY features matter →
+Deploy on SNAX with runtime XAI + formal safety guarantees
+
+---
+
 ## Phase 2b: Optimized SHAP Kernel (VERIFIED)
 
 ### Verification Results (BIST PASSED)
