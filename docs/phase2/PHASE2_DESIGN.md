@@ -139,7 +139,50 @@ is only 40.2% of total. Cycles-per-element-per-sample ranges from 7.4
 **Best-case optimized (all combined)**: ~6,000 cycles — comparable to Grad-CAM.
 **Realistic Phase 2b target (hoist + fusion)**: ~97,000 cycles (~1.8x speedup).
 
-## Phase 2b: INT8 Accelerated (Future)
+## Phase 2b: Optimized Linear-Model SHAP (VERIFIED)
+
+### Key Insight: Gradient Independence
+
+For the GAP+FC model, the gradient `d logit[c]/d fmaps[ij,k] = w_fc[k,c]/(H*W)`
+is **constant** — it does not depend on the interpolated input `x_interp`. This
+means:
+
+1. **The forward pass is unnecessary** — it was only needed to compute a gradient
+   that turns out to be input-independent.
+2. **Interpolation is unnecessary** — the accumulation formula
+   `attr[i] += (x[i] - x'_i) * grad[i]` uses the original input and baseline
+   directly, not the interpolated input.
+3. **The backward pass runs once**, not N times.
+
+### Verified Results (58,022 total cycles, 0/256 errors)
+
+| Stage | Phase 2a cycles | Phase 2b | Savings |
+|-------|----------------|----------|---------|
+| Interpolate (×16) | 48,702 | 0 | -48,702 |
+| Forward FC (×16) | 40,199 | 0 | -40,199 |
+| Backward FC (×16) | 30,341 | 1,930 (×1) | -28,411 |
+| Accumulate (×16) | 53,178 | 53,129 | -49 |
+| Zero + Normalize | 2,631 | 2,823 | +192 |
+| **Total** | **175,510** | **58,022** | **3.02× speedup** |
+
+
+### Implementation
+
+`shap_gradient_optimized()` in `shap.h`:
+- Computes gradient once via `shap_backward_fc()` before the sample loop
+- Sample loop contains only `shap_accumulate()` per sample
+- Scratch reduced from `(2*H*W*K + K + C)` to `H*W*K` floats (grad_buf only)
+- Alphas array no longer needed (no interpolation)
+- BIST golden reference unchanged — mathematical result is identical
+
+### Applicability
+
+This optimization is **exact** for any model where the gradient is constant
+(linear layers, including GAP+FC). For non-linear models (ReLU, BatchNorm),
+the gradient depends on the interpolated input and the full Phase 2a pipeline
+with forward+backward per sample is required.
+
+## Phase 2c: INT8 Accelerated (Future)
 
 When using a quantized INT8 model:
 1. Forward pass becomes INT8 GeMM → offload to SNAX accelerator

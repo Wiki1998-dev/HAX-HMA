@@ -93,9 +93,9 @@ Grad-CAM on SNAX cluster (RISC-V scalar core, float32):
 ## Phase 2 Status: COMPLETE, VERIFIED
 
 Gradient SHAP on SNAX cluster (RISC-V scalar core, float32, N=16 samples):
-- **175,510 cycles**, 0/256 BIST errors (max_err=0.000000)
-- Python reference: 13/13 tests passing
-- Per-stage: interp=48,702 fwd=40,199 bwd=30,341 accum=53,178 norm=1,815
+- **58,022 cycles** (Optimized Phase 2b), 3.02x speedup over 2a (175,510)
+- BIST: 0/256 errors (max_err=0.000000)
+- Per-stage: zero=1,036 bwd=1,930 accum=53,129 norm=1,787
 - Design doc: `docs/phase2/PHASE2_DESIGN.md`, results: `docs/phase2/PHASE2_RESULTS.md`
 
 ### Known Working Commands

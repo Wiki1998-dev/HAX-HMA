@@ -19,11 +19,9 @@ int main() {
     uint32_t fmaps_bytes = spatial_size * sizeof(float);
     uint32_t wfc_bytes = K_CH * N_CLASSES * sizeof(float);
     uint32_t baselines_bytes = N_SAMPLES * spatial_size * sizeof(float);
-    uint32_t alphas_bytes = N_SAMPLES * sizeof(float);
     uint32_t attr_bytes = spatial_size * sizeof(float);
-    // Scratch: interp_buf(H*W*K) + pooled(K) + logits(C) + grad(H*W*K)
-    uint32_t scratch_bytes =
-        (2 * spatial_size + K_CH + N_CLASSES) * sizeof(float);
+    // Scratch: grad_buf only (H*W*K) — optimized kernel doesn't need interp
+    uint32_t scratch_bytes = spatial_size * sizeof(float);
 
     // Allocate L1 SPM buffers
     void *ptr = (void *)snrt_l1_next();
@@ -33,18 +31,15 @@ int main() {
     ptr += wfc_bytes;
     float *local_baselines = ptr;
     ptr += baselines_bytes;
-    float *local_alphas = ptr;
-    ptr += alphas_bytes;
     float *local_attr = ptr;
     ptr += attr_bytes;
     float *local_scratch = ptr;
 
-    // DMA in: feature maps, FC weights, baselines, alphas
+    // DMA in: feature maps, FC weights, baselines (alphas not needed)
     if (snrt_is_dm_core()) {
         snrt_dma_start_1d(local_fmaps, feature_maps, fmaps_bytes);
         snrt_dma_start_1d(local_wfc, w_fc, wfc_bytes);
         snrt_dma_start_1d(local_baselines, baselines, baselines_bytes);
-        snrt_dma_start_1d(local_alphas, alphas, alphas_bytes);
         snrt_dma_wait_all();
     }
 
@@ -54,18 +49,16 @@ int main() {
     if (snrt_cluster_core_idx() == 0) {
         shap_profile_t prof;
 
-        shap_gradient_full(local_fmaps, local_wfc, local_baselines,
-                           local_alphas, local_attr, local_scratch, H, W,
-                           K_CH, N_CLASSES, N_SAMPLES, TARGET_CLASS, &prof);
+        shap_gradient_optimized(local_fmaps, local_wfc, local_baselines,
+                                local_attr, local_scratch, H, W, K_CH,
+                                N_CLASSES, N_SAMPLES, TARGET_CLASS, &prof);
 
-        printf("SHAP Cycles: total=%u (N=%u, H=%u W=%u K=%u C=%u)\n",
+        printf("SHAP Cycles: total=%u (N=%u, H=%u W=%u K=%u C=%u) [optimized]\n",
                prof.total, N_SAMPLES, H, W, K_CH, N_CLASSES);
-        printf("  zero=%u interp=%u fwd=%u bwd=%u accum=%u norm=%u\n",
-               prof.zero, prof.interpolate, prof.forward,
-               prof.backward, prof.accumulate, prof.normalize);
-        printf("  per-sample avg: interp=%u fwd=%u bwd=%u accum=%u\n",
-               prof.interpolate / N_SAMPLES, prof.forward / N_SAMPLES,
-               prof.backward / N_SAMPLES, prof.accumulate / N_SAMPLES);
+        printf("  zero=%u bwd=%u accum=%u norm=%u\n",
+               prof.zero, prof.backward, prof.accumulate, prof.normalize);
+        printf("  per-sample avg accum=%u\n",
+               prof.accumulate / N_SAMPLES);
     }
 
     snrt_cluster_hw_barrier();

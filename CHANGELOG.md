@@ -1,6 +1,22 @@
 # Changelog
 
-## Phase 2: Gradient SHAP on SNAX Cluster (2025-04)
+## Phase 2b: Optimized SHAP Kernel (VERIFIED)
+
+### Verification Results (BIST PASSED)
+- **Total cycles**: **58,022** on RISC-V scalar core (float32, N=16 samples)
+- **Speedup**: **3.02×** over Phase 2a (175,510 cycles)
+- **BIST**: 0/256 errors (max_err=0.000000)
+- **Cycle breakdown**:
+  - zero=1,036, bwd=1,930, accum=53,129, norm=1,787
+  - **Accumulate dominates (91.6%)** as expected after hoisting
+- **Key optimizations**:
+  - Hoisted backward pass (computed once instead of N times)
+  - Eliminated interpolation and forward passes (exact for linear models)
+  - Reduced scratch buffer requirement to `H*W*K` floats
+
+---
+
+## Phase 2a: Gradient SHAP on SNAX Cluster (2025-04)
 
 ### Python Reference Implementation
 - Implemented `gradient_shap()`, `gradient_shap_analytical()`, `expected_gradients()`,
