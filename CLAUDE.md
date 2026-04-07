@@ -90,16 +90,26 @@ Grad-CAM on SNAX cluster (RISC-V scalar core, float32):
 - Key patches applied: `Xdiv_sqrt: true` in cluster config, core-gating fix (`snrt_cluster_core_idx() == 0`)
 - Full results: `docs/phase1/PHASE1_SUMMARY.md`
 
-### Known Working Commands (Phase 1)
+## Phase 2 Status: COMPLETE, VERIFIED
+
+Gradient SHAP on SNAX cluster (RISC-V scalar core, float32, N=16 samples):
+- **175,510 cycles**, 0/256 BIST errors (max_err=0.000000)
+- Python reference: 13/13 tests passing
+- Per-stage: interp=48,702 fwd=40,199 bwd=30,341 accum=53,178 norm=1,815
+- Design doc: `docs/phase2/PHASE2_DESIGN.md`, results: `docs/phase2/PHASE2_RESULTS.md`
+
+### Known Working Commands
 ```bash
 # Generate test data
 python snax_cluster/sw/xai/gradcam/data/datagen.py -c snax_cluster/sw/xai/gradcam/data/params.hjson > snax_cluster/sw/xai/gradcam/data/data.h
+python snax_cluster/sw/xai/shap/data/datagen.py -c snax_cluster/sw/xai/shap/data/params.hjson > snax_cluster/sw/xai/shap/data/data.h
 
 # Build + simulate (from snax_cluster/)
 make -C target/snitch_cluster/sw/apps/xai/gradcam all
+make -C target/snitch_cluster/sw/apps/xai/shap all
 
 # Check results in simulation log
-grep "Cycles:\|Errors" target/snitch_cluster/logs/*.log
+grep "Cycles:\|Errors\|SHAP" target/snitch_cluster/logs/*.log
 ```
 
 ## Benchmarks

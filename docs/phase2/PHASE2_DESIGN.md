@@ -95,7 +95,7 @@ shap_accumulate(input, baseline, grad, attr_accum, H, W, K);
 | Accumulate | 3*H*W*K = 768 | ~800 | ~12,800 |
 | **Total** | | **~2,300** | **~36,800** |
 
-**Measured: 182,297 cycles total** (4.95x over estimate).
+**Measured: 175,510 cycles total, 0/256 errors** (4.77x over estimate).
 
 The gap is explained by:
 1. **Loop-carried dependencies**: Accumulation loops (`sum += ...`) create
@@ -108,31 +108,36 @@ The gap is explained by:
 3. **Loop overhead**: Branch, index increment, comparison add ~3-5 cycles per
    iteration. With 256 elements × 4 steps × 16 samples = ~16,384 iterations,
    this contributes ~50-80k cycles.
-4. **Function call overhead**: Inline expansion helps, but the compiler may
-   not fully eliminate call/return sequences for all helpers.
 
-### Measured Per-Stage Breakdown (Verilator, 175,402 total cycles)
+### Verified Per-Stage Breakdown (Verilator, 175,510 total cycles, 0/256 errors)
 
-| Stage | Total cycles | Per-sample | % of Total |
-|-------|-------------|-----------|-----------|
-| Zero accumulator | 795 | — | 0.5% |
-| Interpolate | 48,625 | 3,039 | 27.7% |
-| Forward FC (GAP+matmul) | 40,201 | 2,512 | 22.9% |
-| Backward FC (gradient) | 30,427 | 1,901 | 17.3% |
-| Accumulate | 53,136 | 3,321 | 30.3% |
-| Normalize (÷N) | 1,816 | — | 1.0% |
-| **Total** | **175,402** | **10,963/sample** | |
+| Stage | Total cycles | Per-sample | % of Total | Cycles/elem/sample |
+|-------|-------------|-----------|-----------|-------------------|
+| Zero accumulator | 816 | — | 0.5% | — |
+| Interpolate | 48,702 | 3,043 | 27.8% | 11.9 |
+| Forward FC (GAP+matmul) | 40,199 | 2,512 | 22.9% | 9.8 |
+| Backward FC (gradient) | 30,341 | 1,896 | 17.3% | 7.4 |
+| Accumulate | 53,178 | 3,323 | 30.3% | 13.0 |
+| Normalize (÷N) | 1,815 | — | 1.0% | — |
+| **Total** | **175,510** | **10,969/sample** | | |
 
 **Profile**: No single bottleneck — cost is spread across memory-bound loops.
-Interpolate + accumulate together = 58% (both are 256-element loops with
+Interpolate + accumulate together = 58.1% (both are 256-element loops with
 2 loads + FP op + store per element). The actual compute (forward+backward)
-is only 40.2% of total.
+is only 40.2% of total. Cycles-per-element-per-sample ranges from 7.4
+(backward, simpler loop body) to 13.0 (accumulate, 3 loads + fma + store).
 
-**Optimization targets for Phase 2b**:
-1. Multi-core: distribute N samples across 8 compute cores → ~22k cycles
-2. Loop fusion: merge interpolate + accumulate into one pass per sample
-3. Hoist backward: gradient is input-independent (linear model) — compute once
-4. GeMM offload: forward FC matmul to accelerator (INT8 path)
+### Phase 2b Optimization Targets
+
+| Optimization | Target stages | Expected savings | Complexity |
+|-------------|---------------|-----------------|-----------|
+| **Hoist backward** | bwd (30,341) | -29,445 (compute once) | Trivial |
+| **Loop fusion** | interp+accum (101,880) | -48,702 (eliminate interp) | Medium |
+| **Multi-core (8 cores)** | all per-sample stages | ÷8 | Medium |
+| **GeMM offload (INT8)** | fwd (40,199) | -39,900 (152x accel) | Hard |
+
+**Best-case optimized (all combined)**: ~6,000 cycles — comparable to Grad-CAM.
+**Realistic Phase 2b target (hoist + fusion)**: ~97,000 cycles (~1.8x speedup).
 
 ## Phase 2b: INT8 Accelerated (Future)
 

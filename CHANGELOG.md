@@ -23,14 +23,15 @@
   alphas, and golden SHAP output
 - Parameters: h=4, w=4, K=16, C=10, n_samples=16, tolerance=1e-2
 
-### Verification Results
-- **Total cycles**: 175,402 on RISC-V scalar core (float32, N=16 samples)
-- **Per-sample**: 10,963 cycles average
-- **Cycle breakdown**: interp=48,625 fwd=40,201 bwd=30,427 accum=53,136 norm=1,816
-- **Profile**: No single bottleneck — accumulate (30.3%) and interpolate (27.7%)
-  dominate, both memory-bound 256-element loops. Forward+backward = 40.2%.
-- **4.8x over initial estimate** — loop-carried FP stalls + load/store overhead
-- **BIST**: verification compiled in (-DBIST in common.mk)
+### Verification Results (BIST PASSED)
+- **Total cycles**: 175,510 on RISC-V scalar core (float32, N=16 samples)
+- **BIST**: 0/256 errors (max_err=0.000000, tolerance=1e-2)
+- **Per-sample**: 10,969 cycles average
+- **Cycle breakdown**:
+  - zero=816, interp=48,702, fwd=40,199, bwd=30,341, accum=53,178, norm=1,815
+  - Accumulate dominates (30.3%), interpolate second (27.8%)
+  - Forward+backward = 40.2% — these are Phase 2b acceleration targets
+- **4.77x over initial estimate** — loop-carried FP stalls + load/store overhead
 
 ### Design Documentation
 - `docs/phase2/PHASE2_DESIGN.md`: async dispatch architecture, double-buffering
