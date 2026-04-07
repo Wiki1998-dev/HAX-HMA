@@ -111,8 +111,28 @@ The gap is explained by:
 4. **Function call overhead**: Inline expansion helps, but the compiler may
    not fully eliminate call/return sequences for all helpers.
 
-Per-stage cycle breakdown will be printed by the instrumented kernel
-(see `shap_profile_t` in shap.h).
+### Measured Per-Stage Breakdown (Verilator, 175,402 total cycles)
+
+| Stage | Total cycles | Per-sample | % of Total |
+|-------|-------------|-----------|-----------|
+| Zero accumulator | 795 | — | 0.5% |
+| Interpolate | 48,625 | 3,039 | 27.7% |
+| Forward FC (GAP+matmul) | 40,201 | 2,512 | 22.9% |
+| Backward FC (gradient) | 30,427 | 1,901 | 17.3% |
+| Accumulate | 53,136 | 3,321 | 30.3% |
+| Normalize (÷N) | 1,816 | — | 1.0% |
+| **Total** | **175,402** | **10,963/sample** | |
+
+**Profile**: No single bottleneck — cost is spread across memory-bound loops.
+Interpolate + accumulate together = 58% (both are 256-element loops with
+2 loads + FP op + store per element). The actual compute (forward+backward)
+is only 40.2% of total.
+
+**Optimization targets for Phase 2b**:
+1. Multi-core: distribute N samples across 8 compute cores → ~22k cycles
+2. Loop fusion: merge interpolate + accumulate into one pass per sample
+3. Hoist backward: gradient is input-independent (linear model) — compute once
+4. GeMM offload: forward FC matmul to accelerator (INT8 path)
 
 ## Phase 2b: INT8 Accelerated (Future)
 

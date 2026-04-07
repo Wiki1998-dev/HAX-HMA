@@ -24,11 +24,13 @@
 - Parameters: h=4, w=4, K=16, C=10, n_samples=16, tolerance=1e-2
 
 ### Verification Results
-- **Total cycles**: 182,297 on RISC-V scalar core (float32, N=16 samples)
-- **Per-sample**: ~11,394 cycles average
-- **5x over initial estimate** — explained by loop-carried FP dependencies,
-  fdiv.s latency, and loop overhead (see PHASE2_DESIGN.md)
-- **BIST**: pending per-stage breakdown from instrumented kernel
+- **Total cycles**: 175,402 on RISC-V scalar core (float32, N=16 samples)
+- **Per-sample**: 10,963 cycles average
+- **Cycle breakdown**: interp=48,625 fwd=40,201 bwd=30,427 accum=53,136 norm=1,816
+- **Profile**: No single bottleneck — accumulate (30.3%) and interpolate (27.7%)
+  dominate, both memory-bound 256-element loops. Forward+backward = 40.2%.
+- **4.8x over initial estimate** — loop-carried FP stalls + load/store overhead
+- **BIST**: verification compiled in (-DBIST in common.mk)
 
 ### Design Documentation
 - `docs/phase2/PHASE2_DESIGN.md`: async dispatch architecture, double-buffering
