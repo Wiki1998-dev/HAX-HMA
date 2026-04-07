@@ -112,6 +112,23 @@ make -C target/snitch_cluster/sw/apps/xai/shap all
 grep "Cycles:\|Errors\|SHAP" target/snitch_cluster/logs/*.log
 ```
 
+## Phase 3 Status: COMPLETE
+
+Formal verification of quantized neural networks (host-side Python):
+- **33/33 tests passing** across quantization, bound propagation, ILP verification
+- QVIP-style ILP verification: local robustness + maximum robustness radius
+- Symmetric INT8 quantization matching SNAX GeMM scheme
+- Interval analysis for constraint reduction (ReLU neuron pruning)
+- LP relaxation with triangle relaxation for 2-layer networks
+- XAI integration: saliency-guided verification of high-importance regions
+- Design doc: `docs/phase3/PHASE3_DESIGN.md`
+
+### Key Files
+- `src/xai/formal/quantization.py` — INT8 quantization (symmetric + QVIP uniform)
+- `src/xai/formal/bound_propagation.py` — Layer-by-layer interval bounds
+- `src/xai/formal/qvip_verifier.py` — ILP robustness verification engine
+- `tests/test_formal_verification.py` — 33 tests
+
 ## Benchmarks
 
 - MLPerf Tiny v1.0: ToyAdmos (anomaly detection), ResNet-8 (image classification)
