@@ -1,5 +1,30 @@
 # Changelog
 
+## Phase 4: Neuro-Symbolic Rule Extraction (2026-04)
+
+### Python Reference Implementation
+- Added `src/xai/symbolic/rule_extractor.py` — saliency-guided decision tree distillation
+- Added `src/xai/symbolic/rule_to_c.py` — C header exporter (inline + table styles)
+- Added `src/xai/symbolic/fidelity_metrics.py` — fidelity, coverage, saliency agreement
+- Added `tests/test_rule_extraction.py` — 33 tests (all passing, incl. gcc compile+run)
+- Added `docs/phase4/PHASE4_DESIGN.md` — Design document
+
+### Key Features
+- Depth-bounded decision tree extraction (default depth ≤ 3) using sklearn backend
+- Saliency-based feature selection: tree only splits on top-K salient features
+- Two C export formats: nested if/else (best for depth ≤ 3) and flat node table
+- Integer-only C output: no FPU required, single-instruction comparisons on RISC-V
+- Fixed-point threshold quantization (configurable scale, default 1024)
+- Fidelity metrics: overall, per-class, leaf coverage, saliency agreement (Jaccard)
+- End-to-end verified: extracted rules compiled with gcc and round-trip tested
+
+### Research Narrative Closed
+Phase 1 Grad-CAM (WHERE) → Phase 2 SHAP (WHY) → Phase 3 QVIP (SAFE) →
+**Phase 4 Rules (WHAT)** — distill the black-box into ~8 auditable IF-THEN
+rules that run in ~20 cycles on RISC-V, cheaper than any other XAI method.
+
+---
+
 ## Phase 3: Formal Verification of Quantized Neural Networks (2026-04)
 
 ### Python Reference Implementation
