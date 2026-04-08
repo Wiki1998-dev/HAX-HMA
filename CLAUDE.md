@@ -112,6 +112,24 @@ make -C target/snitch_cluster/sw/apps/xai/shap all
 grep "Cycles:\|Errors\|SHAP" target/snitch_cluster/logs/*.log
 ```
 
+## Phase 4 Status: COMPLETE
+
+Neuro-symbolic rule extraction (host-side Python + generated C):
+- **33/33 tests passing**, including real gcc compile + run round-trip
+- Saliency-guided decision tree distillation (sklearn backend, depth ≤ 3)
+- Uses only top-K most-salient features from Grad-CAM/LRP/SHAP
+- Two C export formats: nested if/else (inline) and flat node table
+- Integer-only inference (no FPU) — thresholds quantized to fixed-point
+- Expected embedded cycle count: ~15–25 cycles on RV32IMF (≈300× cheaper than Grad-CAM)
+- Fidelity metrics: overall, per-class, coverage, saliency agreement
+- Design doc: `docs/phase4/PHASE4_DESIGN.md`
+
+### Key Files
+- `src/xai/symbolic/rule_extractor.py` — distillation + TreeNode data model
+- `src/xai/symbolic/rule_to_c.py` — C header exporter
+- `src/xai/symbolic/fidelity_metrics.py` — faithfulness + coverage metrics
+- `tests/test_rule_extraction.py` — 33 tests
+
 ## Phase 3 Status: COMPLETE
 
 Formal verification of quantized neural networks (host-side Python):
