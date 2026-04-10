@@ -204,17 +204,31 @@ Input → [Backbone: 7-layer Conv/FC] → Feature Maps → [Head: GAP+FC] → Lo
 
 ## Papers
 
-| File | Topic | Used In |
-|------|-------|---------|
-| `HW-SW_co.pdf` | SNAX architecture + MLIR compiler | Phases 1-2 |
-| `2201_01863v3.pdf` | CFU interface & deploy-profile-optimize loop | CFU port |
-| `Hardware Acceleration of XAI.pdf` | XAI-to-matrix-op mapping | All phases |
-| `QVIP: An ILP-based Formal Verification.pdf` | ILP bounds verification | Phase 3 |
-| `ECQx.pdf` | Saliency-guided quantization | Phase 5 (ECQx filter) |
-| `ZigZag_...pdf` | Cost estimation for SNAX | Cycle model |
-| `DORY.pdf` | Memory tiling for 128 kB SPM | Buffer planner |
-| `HTVM.pdf` | Heterogeneous TinyML deployment | Architecture reference |
-| `Gemmini.pdf` | Systolic array benchmarking | Baseline comparison |
+R. R. Selvaraju, M. Cogswell, A. Das, R. Vedantam, D. Parikh, and D. Batra, "Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization," in Proc. IEEE International Conference on Computer Vision (ICCV), Venice, Italy, 2017.
+
+S. M. Lundberg and S.-I. Lee, "A Unified Approach to Interpreting Model Predictions," in Advances in Neural Information Processing Systems (NeurIPS), vol. 30, 2017.
+
+Z. Zhang, P. Zhao, Y. Chen, and Z. Huang, "QVIP: An ILP-based Formal Verification Approach for Quantized Neural Networks," in Proc. IEEE/ACM 37th International Conference on Automated Software Engineering (ASE), 2022.
+
+D. Becking, P. Dreiling, B. Duong, K. Shridhar, and S. Wermter, "ECQx: Explainability-Driven Quantization for Low-Bit and Sparse DNNs," arXiv preprint arXiv:2109.04236, 2022.
+
+Z. Pan and P. Mishra, "Hardware Acceleration of Explainable Artificial Intelligence," arXiv preprint arXiv:2305.04887, 2023.
+
+G. Paulin, T. Benz, F. Conti, L. Benini et al., "SNAX: An Open-Source HW-SW Co-Development Framework Enabling Efficient Multi-Accelerator Systems," KU Leuven MICAS, 2025.
+
+C. Banbury, V. J. Reddi, M. Lam, W. Fu, A. Fazel, J. Holleman, X. Huang, R. Hurtado, D. Kanter, A. Lokhmotov et al., "MLPerf Tiny Benchmark," in Proc. NeurIPS Datasets and Benchmarks Track, 2021.
+
+J. Cai, P. Bell, T. Callahan, J. Chatterjee, E. Lam, C. McNally, T. Nardi, and M. Wachs, "CFU Playground: Full-Stack Open-Source Framework for Tiny Machine Learning (TinyML) FPGA Co-Design," arXiv preprint arXiv:2201.01863, 2022.
+
+O. Bastani, C. Kim, and H. Bastani, "Interpretability via Model Extraction," in Proc. NeurIPS Workshop on Interpretability and Robustness in Audio, Speech, and Language, 2017.
+
+N. Frosst and G. Hinton, "Distilling a Neural Network Into a Soft Decision Tree," in Proc. 1st International Workshop on Comprehensibility and Explanation in AI and ML (CEx), 2017.
+
+S. Bach, A. Binder, G. Montavon, F. Klauschen, K.-R. Müller, and W. Samek, "On Pixel-Wise Explanations for Non-Linear Classifier Decisions by Layer-Wise Relevance Propagation," PLOS ONE, vol. 10, no. 7, e0130140, 2015.
+
+H. Genc, S. Kim, A. Amid, A. Haj-Ali, V. Iyer, P. Prakash, J. Zhao, D. Grubb, H. Liew, H. Mao et al., "Gemmini: Enabling Systematic Deep-Learning Architecture Evaluation via Full-Stack Integration," in Proc. 58th ACM/IEEE Design Automation Conference (DAC), 2021.
+
+B. Fresz, M. Langer, and M. T. P. Adam, "The Contribution of XAI for the Safe Development and Certification of AI: An Expert-Based Analysis," arXiv preprint arXiv:2408.02379, 2024.
 
 ## License
 
