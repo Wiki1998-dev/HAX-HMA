@@ -1,7 +1,7 @@
 # XAI on Heterogeneous Multi-Accelerator Platforms
 
 Hardware-accelerated Explainable AI (XAI) methods on heterogeneous embedded platforms. Implements Grad-CAM, LRP, Gradient SHAP, QVIP formal verification, and neuro-symbolic rule extraction targeting the **SNAX cluster** (RISC-V + GeMM accelerator) and **CFU Playground** (FPGA + VexRiscv).
-
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Wiki1998-dev/HAX-HMA)
 ## Platforms
 
 | Platform | Architecture | Memory | XAI Role |
