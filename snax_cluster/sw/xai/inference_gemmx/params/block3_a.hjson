@@ -1,0 +1,12 @@
+// ResNet-8 block3_a on GeMMX: 16x16x32 -> 8x8x64, stride 2
+// launches_per_layer: 1
+{
+  Nbatch: 1, H: 16, W: 16, Cin: 32, Cout: 64, Kh: 3, Kw: 3,
+  pad_h: 1, pad_w: 1, stride_h: 2, stride_w: 2,
+  transposed_A: 1, transposed_B: 0,
+  // int8 output through the SIMD requantiser (what the next layer consumes)
+  bypassSIMD: 0,
+  // full int32 C (bias) stream, as in the stock conv example
+  broadcast_C: 0, channel_en_C: 1,
+  interleaved_address: 1, memory_size: 128,
+}

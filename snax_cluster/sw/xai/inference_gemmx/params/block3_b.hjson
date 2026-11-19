@@ -1,0 +1,12 @@
+// ResNet-8 block3_b on GeMMX: 8x8x64->64 (Grad-CAM hook layer)
+// launches_per_layer: 1
+{
+  Nbatch: 1, H: 8, W: 8, Cin: 64, Cout: 64, Kh: 3, Kw: 3,
+  pad_h: 1, pad_w: 1, stride_h: 1, stride_w: 1,
+  transposed_A: 1, transposed_B: 0,
+  // int8 output through the SIMD requantiser (what the next layer consumes)
+  bypassSIMD: 0,
+  // full int32 C (bias) stream, as in the stock conv example
+  broadcast_C: 0, channel_en_C: 1,
+  interleaved_address: 1, memory_size: 128,
+}

@@ -1,0 +1,14 @@
+// ToyAdmos (MLPerf Tiny AD autoencoder) recon 128->640 on GeMMX as a 1x1 conv.
+// Batch 1: one of the 8 mesh rows (W positions) is a real input vector.
+// launches_per_layer: 1
+// layers_with_this_shape: 1
+{
+  Nbatch: 1, H: 1, W: 8, Cin: 128, Cout: 640, Kh: 1, Kw: 1,
+  pad_h: 0, pad_w: 0, stride_h: 1, stride_w: 1,
+  transposed_A: 1, transposed_B: 0,
+  // int8 output through the SIMD requantiser (what the next layer consumes)
+  bypassSIMD: 0,
+  // full int32 C (bias) stream, as in the stock conv example
+  broadcast_C: 0, channel_en_C: 1,
+  interleaved_address: 1, memory_size: 128,
+}
