@@ -8,7 +8,16 @@
 
 ## Abstract
 
-This work presents the first systematic implementation and evaluation of Explainable AI (XAI) methods on heterogeneous embedded multi-accelerator platforms. We implement four complementary XAI techniques — Grad-CAM, Gradient SHAP, QVIP formal verification, and neuro-symbolic rule extraction — on the SNAX cluster (RISC-V + GeMM accelerator); a CFU Playground (FPGA + VexRiscv) port is planned but not yet implemented. All measured kernels currently run on the RISC-V scalar core. Our key contributions include: (1) a measured Grad-CAM cycle count on embedded RISC-V (4,757 cycles), (2) a backward-hoisting optimization that achieves 3.02x speedup for Gradient SHAP by exploiting gradient independence in linear model heads, (3) saliency-guided formal verification that focuses ILP solver effort on high-importance regions identified by XAI, and (4) a neuro-symbolic rule extraction pipeline that distills neural network behavior into auditable decision trees executable in ~47 cycles on RV32IMF. All methods are evaluated across four MLPerf Tiny benchmark architectures (ResNet-8, ToyAdmos, MobileBERT-tiny, GAP+FC) using a SNAX cycle cost model calibrated to within 0.2% of the GAP+FC measurements; numbers for the larger models are extrapolated estimates.
+This work implements and measures Explainable AI (XAI) methods on a heterogeneous embedded accelerator cluster: SNAX, with RISC-V cores and an 8×8×8 int8 GeMMX matrix accelerator. It uses the two MLPerf Tiny benchmarks with their real int8 reference models and real data: ResNet-8 on CIFAR-10 and the ToyAdmos anomaly-detection autoencoder on DCASE 2020 ToyCar.
+
+All matrix work, for inference and for explanation, runs on GeMMX in cycle-accurate simulation. Every result is bit-exact against an emulator of the accelerator, and the integer mapping keeps the reference accuracy: top-1 0.870 vs 0.870 (ResNet-8), AUC 0.8406 vs 0.8416 (ToyAdmos).
+
+- **Grad-CAM on ResNet-8** adds 3,841 cycles (7.2%) to a 53.6k-cycle inference, with int8 maps matching float32 at r = 0.997.
+- **Integrated Gradients and Gradient SHAP on ToyAdmos** cost 91.5k cycles including the inference, which falls out of the XAI pass. The 16 samples are stacked in the accelerator's mesh rows, so each layer runs once for all of them. The score's direct gradient term and the attribution reduction are also mapped onto GeMMX.
+- **Configuration overhead.** The stock driver configures a launch in ~2,300 cycles. Generating straight-line, delta-only register writes from the launch schedule cuts this to ~77 cycles, speeding inference up 5.1× and XAI 2.0×.
+- **Earlier work.** Measurements on the scalar RISC-V core (Grad-CAM, a 3.02× backward-hoisting optimisation for Gradient SHAP), saliency-guided formal verification and neuro-symbolic rule extraction (47 cycles) complete the study.
+
+The results show which XAI methods fit an edge accelerator's budget: single-pass methods on linear heads do, gradient sampling through deep networks does not. They also show that the remaining cost lies in core-side elementwise work and in int8 gradient precision.
 
 ---
 
@@ -31,6 +40,8 @@ This work makes the following contributions:
 3. **Saliency-guided formal verification** combining Grad-CAM saliency with QVIP ILP verification to focus solver effort on high-importance input regions
 4. **Neuro-symbolic rule extraction** that distills neural network behavior into depth-3 decision trees using only the top-K most salient features, executable in ~47 cycles with integer-only arithmetic
 5. **Cross-model benchmark framework** evaluating all four XAI methods across four MLPerf Tiny architectures with a SNAX cycle cost model calibrated per stage against the GAP+FC measurements
+6. **End-to-end measured XAI on an accelerator with real MLPerf Tiny models**: ResNet-8 inference + Grad-CAM and ToyAdmos inference + Integrated Gradients + Gradient SHAP, every GeMM on GeMMX and bit-exact in simulation. A launch-schedule generator with a bit-exact GeMMX emulator produces the configurations, and new mappings put sample batching, loss gradients and attribution reductions on the accelerator (Section 8.7).
+7. **Launch-configuration overhead analysis and fix**: delta CSR configuration generated from the schedule, ~30× cheaper per launch than the stock driver.
 
 ### 1.4 Research Narrative
 
@@ -608,6 +619,8 @@ All XAI methods are evaluated across four MLPerf Tiny architectures:
 | **ToyAdmos** | Audio anomaly | 640-dim | FC(128)x4 + bottleneck(8) + FC(128)x4 + FC(640) | bottleneck | 8 |
 | **MobileBERT-tiny** | NLP | 32x128 | embed + 2 transformer blocks + pool + FC(2) | final layernorm | 4,096 |
 
+> **Superseded by measurements.** Sections 8.2–8.4 describe the analytical cost model used before end-to-end simulation was available. Its inference estimates were off by up to 10.8× (it assumed 16 MAC/cycle and a 400-cycle launch). Section 8.7 reports measured numbers with the real models.
+
 ### 8.2 SNAX Cycle Cost Model
 
 The cost model (`src/xai/benchmark/cycle_model.py`) estimates SNAX cycles without running hardware simulation. It has two parts:
@@ -681,6 +694,32 @@ predictions = runner.predict(X)        # teacher labels for distillation
 | **Total Phase 5** | **188** | |
 
 ---
+
+### 8.7 End-to-End Measured Benchmark on GeMMX (real MLPerf Tiny models)
+
+Cycle-accurate Verilator simulation of `snax_KUL_cluster`, real int8 reference models and data, all outputs bit-exact against the emulator, weights streamed from L3 (details: `docs/gemmx/BENCHMARK.md`).
+
+| Model | Workload | Cycles | vs inference | GeMMX busy | Faithfulness |
+|---|---|---:|---:|---:|---|
+| ToyAdmos | inference | 9,227 | 1.00× | 55% | AUC 0.8406 (TFLite 0.8416) |
+| ToyAdmos | Integrated Gradients (16 steps), inference fused | 91,517 | 9.9× | 26% | r = 0.73 vs float32 |
+| ToyAdmos | Gradient SHAP (16 baselines), inference fused | 91,517 | 9.9× | 26% | r = 0.70 vs float32 |
+| ResNet-8 | inference | ≈ 53,600 | 1.00× | 67% | top-1 0.870 (TFLite 0.870) |
+| ResNet-8 | Grad-CAM, fused | +3,841 | 1.07× | — | r = 0.997 vs float32 |
+
+**Mappings.**
+- **Gradient sampling:** the 16 IG / SHAP samples share each launch in the mesh rows. The anomaly score's gradient `Jᵀ(y − x̃) − (y − x̃)` uses a block-diagonal launch for `y − x̃` (scale ratio 59/55) and a transposer-based "diagonal" launch for `Σᵢ (x − bᵢ) ⊙ gᵢ`.
+- **ResNet-8:**
+  - per-channel requantisation via one launch per 8 output channels (the SIMD unit has 8 per-column multipliers);
+  - residual adds as block-diagonal launches;
+  - average pooling as a ones-GeMM;
+  - Grad-CAM as one launch on the final feature map with `α` = the predicted class's FC row.
+
+**Findings.**
+- Grad-CAM meets the 20% overhead target.
+- Gradient-sampling XAI through a deep network does not (+890%). Measured against the detector's real-time frame budget (3.2M cycles per 32 ms window at 100 MHz) it is 2.9%.
+- After the configuration fix, the remaining XAI time is core-side ReLU masking (44%) and attribution gathering (20%).
+- Int8 gradients through 10 layers limit attribution fidelity (r ≈ 0.7, against 0.998 for the direct term).
 
 ## 9. Cumulative Results Summary
 
