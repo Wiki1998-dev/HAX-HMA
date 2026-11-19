@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.normpath(os.path.join(HERE, "../../../../../scripts")
 import ad01_int as A  # noqa: E402
 from emit import c_bytes  # noqa: E402
 from gemmx_sched import (BLK, Acc, Act, Launch, Tcdm, WB, blockdiag2,  # noqa: E402
-                         emit_launches, gemm, pack_act, pack_wb, run_launch)
+                         emit_cfg_code, emit_launches, gemm, pack_act, pack_wb, run_launch)
 
 N_SAMPLES = 16
 TILE = 128                    # weight tile side (16 kB int8)
@@ -73,7 +73,7 @@ class Step:
     launch: Optional[Launch] = None
     blob: int = -1                      # parameter blob this launch reads
     # ("mask", g_off, a_off, n) | ("diag", d32_off, dst_off)
-    # | ("combine", a0_off, agy_off, out_off, m0, m1)
+    # | ("combine", a0_off, agy_off, out_off, m0, m1) | ("row", act_off, row, dst_off)
     post: Optional[Tuple] = None
     scratch: int = -1                   # parameter buffer used as scratch (no prefetch into it)
 
@@ -287,6 +287,12 @@ def build_xai(layers: List[A.Layer], xq: np.ndarray, bq: np.ndarray, alpha: np.n
                                      simd=_simd_shift(4))))
     fsteps, acts, Y, P = _forward_steps(layers, al, R, XT, pb, blobs, dst)
     steps += fsteps
+    # Fused inference: the sample with alpha = 16 is x itself, so its output
+    # row is the inference result. The DMA core copies it out (2-D DMA)
+    # before the loss launch overwrites y in place.
+    inf_row = int(np.where(alpha == 16)[0][0])
+    YINF = al.take(640)
+    steps[-1].post = ("row", Y.off, inf_row, YINF)
     # loss gradient, in place over y. x~ sits below y in the TCDM and strides
     # must be non-negative, so the operands are [x~ | y] @ [-59 I; 55 I].
     assert XT.off < Y.off
@@ -383,11 +389,14 @@ def build_xai(layers: List[A.Layer], xq: np.ndarray, bq: np.ndarray, alpha: np.n
     ref = int_xai_reference(layers, xq, bq, alpha, sh)
     from gemmx_sched import unpack_act
     assert np.array_equal(unpack_act(t.read(G0.off, G0.nbytes), R, 640), ref["g0"]), "g0 mismatch"
+    y_inf = t.read(YINF, 640)
+    assert np.array_equal(y_inf, A.forward(xq[None], layers)[-1][0]), "fused inference != inference"
     attr_emu = t.read(ATTR, 640 * 4, np.int32)
     assert np.array_equal(t.read(AGY, 2560, np.int32), ref["attr_gy"]), "attr_gy mismatch"
     assert np.array_equal(attr_emu, ref["attr"]), "attribution mismatch"
     prog.checks = ([(f"a{i + 1}", a.off, t.read(a.off, a.nbytes, np.uint8)) for i, a in enumerate(acts)]
-                   + [("D", D.off, t.read(D.off, D.nbytes, np.uint8)),
+                   + [("y_inf", YINF, t.read(YINF, 640, np.uint8)),
+                      ("D", D.off, t.read(D.off, D.nbytes, np.uint8)),
                       ("attr_gy", AGY, t.read(AGY, 2560, np.uint8)),
                       ("g0", G0.off, t.read(G0.off, G0.nbytes, np.uint8)),
                       ("attr", ATTR, t.read(ATTR, 640 * 4, np.uint8))])
@@ -416,6 +425,11 @@ def emulate(prog: Program) -> Tcdm:
         elif s.post and s.post[0] == "diag":
             d = t.read(s.post[1], 80 * 256, np.int32).reshape(80, 8, 8)
             t.write(s.post[2], np.array([d[f // 8, f % 8, f % 8] for f in range(640)], dtype=np.int32))
+        elif s.post and s.post[0] == "row":
+            _, a_off, row, d_off = s.post
+            mt, r = divmod(row, 8)
+            for c in range(80):
+                t.write(d_off + c * 8, t.read(a_off + (mt * 80 + c) * BLK + r * 8, 8))
         elif s.post and s.post[0] == "combine":
             _, a0, agy, o, m0, m1 = s.post
             v = m0 * t.read(a0, 2560, np.int32).astype(np.int64) - m1 * t.read(agy, 2560, np.int32).astype(np.int64)
@@ -458,6 +472,7 @@ def emit(prog: Program, title: str) -> str:
     out.append(c_bytes("prog_x", prog.x_l3))
     out.append(f"#define PROG_X_DST {prog.x_dst}")
     out.append(emit_launches("prog_launches", launches))
+    out.append(emit_cfg_code(launches, True, "cfg"))
     blob_all = np.concatenate(prog.blobs)
     out.append(c_bytes("prog_params", blob_all))
     offs = np.cumsum([0] + [b.size for b in prog.blobs])[:-1]
@@ -488,6 +503,10 @@ def emit(prog: Program, title: str) -> str:
             post, pa, pb_ = 2, s.post[1], s.post[2]
         elif s.post and s.post[0] == "combine":
             post, pa, pb_, pn, m0, m1 = 3, s.post[1], s.post[2], s.post[3], s.post[4], s.post[5]
+        elif s.post and s.post[0] == "row":
+            _, a_off, row, d_off = s.post
+            mt, r = divmod(row, 8)
+            post, pa, pb_ = 4, a_off + mt * 80 * BLK + r * 8, d_off
         rows_pre.append(pre)
         lidx = li if s.launch is not None else -1
         rows.append(f"  {{{lidx}, {pre}, {PHASES.index(s.phase)}, {post}, {pa}, {pb_}, {pn}, {m0}, {m1}}}")
@@ -544,7 +563,9 @@ def baselines(method: str, layers: List[A.Layer], bg: np.ndarray,
         b = A.quantize_input(bg.mean(axis=0)[None], layers)
         return np.repeat(b, N_SAMPLES, axis=0), np.arange(1, N_SAMPLES + 1)
     idx = rng.choice(len(bg), N_SAMPLES, replace=False)
-    return A.quantize_input(bg[idx], layers), rng.integers(0, 17, size=N_SAMPLES)
+    alpha = rng.integers(0, 17, size=N_SAMPLES)
+    alpha[0] = 16          # one sample is x itself: its forward pass is the inference
+    return A.quantize_input(bg[idx], layers), alpha
 
 
 def main(prog_name: str) -> None:

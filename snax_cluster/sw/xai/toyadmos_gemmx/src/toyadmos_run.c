@@ -14,6 +14,9 @@
 //  - after every core-side op both cores synchronise, so the DMA core never
 //    prefetches into a buffer that is still being read;
 //  - every output region is compared byte for byte with the emulator.
+// Configuration: generated straight-line writes of only the registers that
+// changed since the previous launch (cfg_fns, from gemmx_sched.py); build
+// with -DCFG_LIB to use the library's set_gemmx_*_csr instead.
 
 #include <stdint.h>
 
@@ -21,7 +24,7 @@
 #include "gemmx_exec.h"
 #include "snrt.h"
 
-enum { POST_NONE = 0, POST_MASK = 1, POST_DIAG = 2, POST_COMBINE = 3 };
+enum { POST_NONE = 0, POST_MASK = 1, POST_DIAG = 2, POST_COMBINE = 3, POST_ROW = 4 };
 enum { PH_BACKWARD = 3, PH_ATTR = 4, N_PHASES = 5 };
 
 // g[i] = 0 where the ReLU of the forward activation was inactive
@@ -85,7 +88,11 @@ int main() {
                               prog_blob_len[st->prefetch]);
         if (core0 && st->launch >= 0) {
             uint32_t a = snrt_mcycle();
+#ifdef CFG_LIB
             gemmx_configure(&prog_launches[st->launch]);
+#else
+            cfg_fns[st->launch]((uint32_t)l1);
+#endif
             uint32_t b = snrt_mcycle();
             gemmx_run();
             uint32_t c = snrt_mcycle();
@@ -107,6 +114,10 @@ int main() {
                           st->n - half);
         } else if (core0 && st->post == POST_DIAG) {
             diag_gather((const int32_t *)(l1 + st->a), (int32_t *)(l1 + st->b));
+        } else if (dm && st->post == POST_ROW) {
+            // Fused inference: copy one sample's output row (8 B per block).
+            snrt_dma_start_2d(l1 + st->b, l1 + st->a, 8, 8, 64, 80);
+            snrt_dma_wait_all();
         } else if (core0 && st->post == POST_COMBINE) {
             combine((const int32_t *)(l1 + st->a), (const int32_t *)(l1 + st->b),
                     (int32_t *)(l1 + st->n), st->m0, st->m1);

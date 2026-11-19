@@ -85,3 +85,6 @@ if __name__ == "__main__":
     image, launches, checks = build()
     print("#include <stdint.h>\n#include \"gemmx_exec.h\"\n")
     print(emit_schedule_header("tp", image, launches, checks))
+    from gemmx_sched import emit_cfg_code
+    print(emit_cfg_code(launches, False, "cfgfull"))
+    print(emit_cfg_code(launches, True, "cfgdelta"))

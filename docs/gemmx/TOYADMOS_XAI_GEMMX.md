@@ -30,6 +30,17 @@ IG and SHAP run the same schedule with different data, so their cycle counts are
 
 IG phase breakdown: interp 4,172; forward 51,250; loss 3,606; backward 90,881 (includes masks); attribution 27,171.
 
+## After the configuration fix + fused inference (current)
+
+Configuration via generated delta CSR writes (`CONFIG_OVERHEAD.md`). The XAI pass also produces the inference: the sample with alpha = 16/16 *is* x, and its output row is copied out by a 2-D DMA (`y_inf`, bit-exact with standalone inference).
+
+| Program | Cycles | Config | GeMMX run | Core ops | GeMMX busy |
+|---|---:|---:|---:|---:|---:|
+| Inference | **9,227** | 2,631 | 5,059 | — | 55% |
+| IG / Gradient SHAP **including the inference** | **91,517** | 5,023 | 23,835 | masks 39,863, gather + combine 18,737 | 26% |
+
+The remaining XAI time is core work: ReLU masks (44%) and attribution gather / combine (20%).
+
 ## Schedule (all matrix work on GeMMX)
 
 | Step | Formulation |

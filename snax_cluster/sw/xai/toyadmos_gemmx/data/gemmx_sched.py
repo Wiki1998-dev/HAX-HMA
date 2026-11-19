@@ -149,6 +149,15 @@ class Launch:
     zp_out: int = 0
     out_min: int = -128
     out_max: int = 127
+    a_sl: int = 8             # A spatial stride (bytes between mesh rows)
+    mult8: Optional[List[int]] = None    # per-column SIMD multipliers (else mult)
+    shift8: Optional[List[int]] = None   # per-column SIMD shifts (else shift)
+
+    def col_mult(self) -> List[int]:
+        return list(self.mult8) if self.mult8 is not None else [self.mult] * 8
+
+    def col_shift(self) -> List[int]:
+        return list(self.shift8) if self.shift8 is not None else [self.shift] * 8
 
 
 def _loops(bounds: Sequence[int], strides: Sequence[int]) -> List[int]:
@@ -303,8 +312,8 @@ def run_launch(t: Tcdm, L: Launch) -> None:
     nout = L.M * L.N
     assert len(a_seq) == len(b_seq) == nout * L.K, (L.name, len(a_seq), len(b_seq), nout, L.K)
 
-    def blk8(off: int, trans: int) -> np.ndarray:
-        x = t.read(off, BLK).reshape(8, 8).astype(np.int64)
+    def blk8(off: int, trans: int, sl: int = 8) -> np.ndarray:
+        x = np.stack([t.read(off + r * sl, 8) for r in range(8)]).astype(np.int64)
         return x.T if trans else x
 
     accs = []
@@ -312,24 +321,28 @@ def run_launch(t: Tcdm, L: Launch) -> None:
         acc = np.zeros((8, 8), dtype=np.int64)
         for kk in range(L.K):
             i = j * L.K + kk
-            A = blk8(L.a_off + a_seq[i], L.trans_a)       # [row][k]
+            A = blk8(L.a_off + a_seq[i], L.trans_a, L.a_sl)   # [row][k]
             Bm = blk8(L.b_off + b_seq[i], L.trans_b)      # [col][k]
             acc += A @ Bm.T
         accs.append(acc)
     if L.c_en:
-        c_seq = _loops([L.c_tb[1], L.c_tb[2]], [L.c_ts[1], L.c_ts[2]])
+        c_seq = _loops(L.c_tb, L.c_ts)
         for j in range(nout):
             accs[j] += t.read(L.c_off + c_seq[j], BLK32, np.int32).reshape(8, 8)
-    out_seq = (_loops([L.d32_tb[1], L.d32_tb[2]], [L.d32_ts[1], L.d32_ts[2]]) if L.bypass
-               else _loops([L.d8_tb[1], L.d8_tb[2]], [L.d8_ts[1], L.d8_ts[2]]))
+    # one output beat per 8x8 block (D8 512 bit, D32 2048 bit): all three
+    # temporal loops enumerate output blocks
+    out_seq = _loops(L.d32_tb, L.d32_ts) if L.bypass else _loops(L.d8_tb, L.d8_ts)
+    assert len(out_seq) == nout, (L.name, len(out_seq), nout)
     for j in range(nout):
         a = accs[j]
         assert np.all(np.abs(a) < 2 ** 31), f"{L.name}: int32 overflow"
         if L.bypass:
             t.write(L.d32_off + out_seq[j], a.astype(np.int32))
         else:
-            q = postprocessing_simd_golden_model(a.astype(np.int32), 0, L.zp_out, L.shift,
-                                                 L.out_max, L.out_min, 0, L.mult)
+            q = np.empty((8, 8), dtype=np.int32)
+            for c, (m, sh) in enumerate(zip(L.col_mult(), L.col_shift())):
+                q[:, c] = postprocessing_simd_golden_model(a[:, c].astype(np.int32), 0, L.zp_out,
+                                                           sh, L.out_max, L.out_min, 0, m)
             t.write(L.d8_off + out_seq[j], q.astype(np.int8))
 
 
@@ -360,3 +373,75 @@ def emit_launches(name: str, launches: List[Launch]) -> str:
             f"{L.zp_out}, {L.out_min}, {L.out_max}}}")
     return (f"static const gemmx_launch_t {name}[{len(launches)}] = {{\n"
             + ",\n".join(rows) + "\n};\n")
+
+
+# --------------------------------------------------------------------------
+# Register image + generated configuration code
+# --------------------------------------------------------------------------
+# snax_KUL_cluster CSR map (streamer_csr_addr_map.h, snax-gemmx-lib.h).
+CSR = dict(A=960, B=976, D8=986, C=996, D32=1008, EXT_A=1019, EXT_B=1020, EXT_C=1021,
+           STREAMER_START=1022, K=1025, N=1026, M=1027, SUB=1028, SIMD0=1029, SIMD1=1030,
+           SHIFT=1031, MULT=1033, TLB=1041, BYPASS=1042, GEMMX_START=1043)
+L1 = "l1"   # marks a base-pointer register: value = l1 base + offset
+
+
+def csr_image(L: Launch) -> dict:
+    """Every register value set_gemmx_streamer_csr + set_gemmx_csr would write
+    for this launch (same values, including the library's zeroed bounds of
+    the unused output writer). Base pointers are (L1, offset)."""
+    r = {}
+
+    def mover(base, off, sl, tb, ts, ndim):
+        r[base] = (L1, off)
+        for i, v in enumerate(sl):
+            r[base + 2 + i] = v
+        b0 = base + 2 + len(sl)
+        for i in range(ndim):
+            r[b0 + i] = tb[i]
+            r[b0 + ndim + i] = ts[i]
+        r[b0 + 2 * ndim] = 0                        # address remap index
+
+    mover(CSR["A"], L.a_off, [L.a_sl], L.a_tb, L.a_ts, 6)
+    mover(CSR["B"], L.b_off, [8], L.b_tb, L.b_ts, 3)
+    mover(CSR["D8"], L.d8_off, [8], [0, 0, 0] if L.bypass else L.d8_tb, L.d8_ts, 3)
+    mover(CSR["C"], L.c_off, [8, 64], L.c_tb, L.c_ts, 3)
+    r[CSR["C"] + 11] = 0xFFFFFFFF if L.c_en else 0       # channel enable
+    mover(CSR["D32"], L.d32_off, [8, 64], L.d32_tb if L.bypass else [0, 0, 0], L.d32_ts, 3)
+    r[CSR["EXT_A"]], r[CSR["EXT_B"]], r[CSR["EXT_C"]] = L.trans_a, L.trans_b, 0
+    r[CSR["K"]], r[CSR["N"]], r[CSR["M"]] = L.K, L.N, L.M
+    r[CSR["SUB"]] = 0
+    r[CSR["SIMD0"]] = ((L.out_min & 0xFF) << 24) | ((L.out_max & 0xFF) << 16) | ((L.zp_out & 0xFF) << 8)
+    r[CSR["SIMD1"]] = 0
+    sh8 = L.col_shift()
+    for w in range(2):                                  # 4 shifts per word, column 0 in the LSB
+        r[CSR["SHIFT"] + w] = sum((sh8[4 * w + i] & 0xFF) << (8 * i) for i in range(4))
+    for i, m in enumerate(L.col_mult()):
+        r[CSR["MULT"] + i] = m & 0xFFFFFFFF
+    r[CSR["TLB"]] = L.M * L.N
+    r[CSR["BYPASS"]] = L.bypass
+    return {a: (v if isinstance(v, tuple) else int(v) & 0xFFFFFFFF) for a, v in r.items()}
+
+
+def emit_cfg_code(launches: List[Launch], delta: bool, prefix: str = "cfg") -> str:
+    """C functions cfg_<i>(l1) writing launch i's registers with constant CSR
+    addresses (straight-line, no switch). With ``delta`` only registers whose
+    value differs from launch i-1 are written (CSR-manager registers persist
+    and are latched at start). Writes are ordered like the library's."""
+    out, prev = [], {}
+    for i, L in enumerate(launches):
+        img = csr_image(L)
+        body = []
+        for a in sorted(img):
+            v = img[a]
+            if delta and prev.get(a) == v:
+                continue
+            if isinstance(v, tuple):
+                body.append(f"    write_csr({a}, l1 + {v[1]}u);")
+            else:
+                body.append(f"    write_csr({a}, {v}u);")
+        prev = img
+        out.append(f"static void {prefix}_{i}(uint32_t l1) {{  /* {L.name}: {len(body)} writes */\n"
+                   + "\n".join(body) + ("\n" if body else "") + "    (void)l1;\n}")
+    out.append("#ifndef CFG_FN_T\n#define CFG_FN_T\ntypedef void (*cfg_fn_t)(uint32_t);\n#endif")
+    out.append(f"static const cfg_fn_t {prefix}_fns[] = {{" + ", ".join(f"{prefix}_{i}" for i in range(len(launches))) + "};")
+    return "\n".join(out) + "\n"

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-11-19: Real ResNet-8 + Grad-CAM on GeMMX; GeMMX configuration 30x cheaper
+
+### Added
+- `snax_cluster/sw/xai/resnet8_gemmx/`: real MLPerf ResNet-8 on GeMMX, with
+  `resnet8_int.py` (GeMMX integer semantics, top-1 0.870 = TFLite) and `resnet8.py`
+  (schedule: implicit-im2col convs, one launch per 8 channels for per-channel requant,
+  block-diagonal residual adds, ones-GeMM average pool, fused Grad-CAM).
+- Measured, bit-exact: inference ≈ 53.6k cycles, Grad-CAM +3,841 (7.2%), GeMMX busy 67%.
+- Grad-CAM int8 vs float32 over 200 images: Pearson r 0.997.
+- Generated straight-line delta CSR configuration (`gemmx_sched.emit_cfg_code`):
+  ~77 vs ~2,300 cycles per launch. Results:
+  - ToyAdmos inference 47,189 → 9,227 cycles;
+  - IG / SHAP with fused inference 181,188 → 91,517 cycles.
+- `docs/gemmx/RESNET8_GEMMX.md`, `docs/gemmx/CONFIG_OVERHEAD.md`,
+  `scripts/resnet8_gradcam_fidelity.py`.
+
+### Fixed
+- TF `SAME` padding for stride-2 convs is asymmetric (0 before, 1 after). Symmetric
+  padding had dropped accuracy to 0.595.
+
 ## 2026-11-19: ToyAdmos inference + IG + Gradient SHAP on GeMMX (real model and data)
 
 ### Added
