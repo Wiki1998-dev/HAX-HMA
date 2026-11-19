@@ -13,13 +13,17 @@ Every number below comes from a Verilator simulation of the `snax_KUL_cluster`: 
 | ResNet-8 | **Grad-CAM**, fused | **+3,841** | **1.07×** | — | r = 0.997 vs float32 Grad-CAM (200 images) |
 | ResNet-8 | **Integrated Gradients** (input level, 16 steps), inference fused | **6,027,558** | 112× | 21% | r = 0.946 vs float32 IG (50 images) |
 | ResNet-8 | **Gradient SHAP** (input level, 16 baselines), inference fused | **6,027,558** | 112× | 21% | r = 0.916 vs float32 SHAP |
+| Keyword spotting `kws_ref_model` (DS-CNN) | inference (1 Speech Commands clip) | **48,024** | 1.00× | 45%† | top-1 0.9180 (TFLite 0.9180), 4,890 clips |
+| Keyword spotting | **Grad-CAM**, fused | **+5,787** | **1.12×** | — | r = 0.994 vs float32 Grad-CAM (500 clips) |
+| Visual wake words `vww_96_int8` (MobileNetV1) | inference (1 COCO image, 96×96) | **188,250** | 1.00× | 34%† | top-1 0.848 (TFLite 0.850), 1,000 images |
+| Visual wake words | **Grad-CAM**, fused | **+1,538** | **1.008×** | — | r = 0.997 vs float32 Grad-CAM (500 images) |
 
-*Busy share of the 57,461-cycle inference + Grad-CAM run.
+*Busy share of the 57,461-cycle inference + Grad-CAM run. †Busy share of the inference + Grad-CAM run (53,811 / 189,788 cycles); depthwise layers use 1/8 of the mesh (`MOBILE_GEMMX.md`).
 
 ## Against the project targets
 
 - **XAI overhead < 20% of inference.**
-  - Met by Grad-CAM on ResNet-8 (+7.2%). With a linear head, Grad-CAM is one launch on the feature map inference already produced.
+  - Met by Grad-CAM on all three CNNs: ResNet-8 +7.2%, keyword spotting +12.0%, visual wake words +0.8%. With a linear head, Grad-CAM is one launch on the feature map inference already produced.
   - Not met by the gradient-sampling methods on ToyAdmos (+890%). They need 16 samples × (forward + backward) through a 10-layer network. Stacking the samples into the mesh rows keeps this at 41 launches instead of 320, and the inference comes for free inside the XAI pass.
   - Against the real-time budget of the anomaly detector (one window per 32 ms hop: 3.2M cycles at 100 MHz), the full IG / SHAP explanation is 2.9%.
 - **Accelerator utilisation > 90%.**
@@ -33,8 +37,9 @@ Every number below comes from a Verilator simulation of the `snax_KUL_cluster`: 
 ## Not yet measured
 
 - Time between frames: feature extraction (log-mel) for ToyAdmos, image capture for ResNet-8.
+- IG / SHAP on keyword spotting and visual wake words (only Grad-CAM so far).
 - MobileBERT is out of scope: it has no integer softmax / layernorm kernels.
 
 ## Sources
 
-`TOYADMOS_XAI_GEMMX.md`, `RESNET8_GEMMX.md`, `CONFIG_OVERHEAD.md`, `INFERENCE_GEMMX.md` (per-layer, simplified ResNet-8), `GRADCAM_GEMMX.md`, `SHAP_GEMMX.md` (GAP+FC test model).
+`TOYADMOS_XAI_GEMMX.md`, `RESNET8_GEMMX.md`, `MOBILE_GEMMX.md`, `CONFIG_OVERHEAD.md`, `INFERENCE_GEMMX.md` (per-layer, simplified ResNet-8), `GRADCAM_GEMMX.md`, `SHAP_GEMMX.md` (GAP+FC test model).
