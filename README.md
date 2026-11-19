@@ -13,12 +13,12 @@ Hardware-accelerated Explainable AI (XAI) methods on heterogeneous embedded plat
 
 | Phase | Method | Platform | Status | Key Result |
 |-------|--------|----------|--------|------------|
-| 1 | **Grad-CAM** | SNAX (RV32IMF scalar) | Complete | 6,153 cycles, 0/16 BIST errors |
+| 1 | **Grad-CAM** | SNAX (RV32IMF scalar) | Complete | 4,757 cycles fp32 / 6,923 INT8-weight, 0/16 BIST errors |
 | 2a | **Gradient SHAP** (naive) | SNAX (RV32IMF scalar) | Complete | 175,510 cycles, 0/256 errors |
 | 2b | **Gradient SHAP** (hoisted) | SNAX (RV32IMF scalar) | Complete | 58,022 cycles (3.02x speedup) |
 | 3 | **QVIP Formal Verification** | Host (Python + scipy ILP) | Complete | 33/33 tests, INT8 robustness proofs |
-| 4 | **Neuro-Symbolic Rules** | Host + RV32IMF (generated C) | Complete | 33/33 tests, ~47 cycles per rule walk |
-| 5 | **Benchmark & Scaling** | Host (cycle cost model) | In Progress | 4 models, 4 methods, comparison matrix |
+| 4 | **Neuro-Symbolic Rules** | Host + RV32IMF (generated C) | Complete | 33/33 tests, 47 cycles per rule walk |
+| 5 | **Benchmark & Scaling** | Host (cycle cost model) | In Progress | XAI cost model within 0.2% of GAP+FC measurements; inference uncalibrated |
 
 ## Benchmark Models
 
@@ -117,9 +117,11 @@ Saliency map computation on a single RISC-V RV32IMF core (Snitch, float32):
 | Metric | Value |
 |--------|-------|
 | Feature map | 4x4 spatial, 16 channels, 10 classes |
-| Total cycles | **6,153** |
-| BIST errors | 0/16 |
-| Bottleneck | FPU division in normalize (68.8%) |
+| Total cycles | **4,757** (fp32), 6,923 (INT8 weights) |
+| BIST errors | 0/16 (both builds) |
+| Largest stage | Weighted sum (42.5%); every loop costs ~7–8 cycles/element |
+
+The originally published 6,153 cycles included an out-of-bounds read in the GAP step and an estimated (not measured) breakdown blaming `fdiv`; see `docs/phase1/PHASE1_SUMMARY.md`.
 
 ### Phase 2: Gradient SHAP on SNAX
 
@@ -130,7 +132,7 @@ Backward-hoisted SHAP with N=16 baseline samples:
 | Phase 2a (naive) | 175,510 | 0/256 | 1.0x |
 | Phase 2b (hoisted) | **58,022** | 0/256 | **3.02x** |
 
-The hoisting optimization caches backbone feature maps and re-runs only the lightweight head for each SHAP sample, reducing cost from O(N x model) to O(backbone + N x head).
+For a linear head (GAP+FC) the gradient is constant along the integration path, so hoisting computes it once and removes the per-sample interpolation, head forward and backward; only the per-sample accumulation remains (91.6% of 2b).
 
 ### Phase 3: QVIP Formal Verification
 
@@ -158,12 +160,12 @@ Estimated XAI overhead across benchmark models (cycle cost model):
 
 | Model | Inference | Grad-CAM | SHAP (hoisted) | Symbolic | QVIP (host) |
 |-------|----------:|----------:|---------------:|---------:|------------:|
-| GAP+FC (cal.) | 12.0k | 6.2k (51%) | 58.0k (483%) | 47 (0.4%) | 12.4s |
-| ResNet-8 | 772.4k | 4.8k (0.6%) | 949.4k (123%) | 47 (0.0%) | 3600s |
-| ToyAdmos | 20.6k | 11.0k (54%) | 359.8k (1748%) | 47 (0.2%) | 234s |
-| MobileBERT | 870.9k | 4.8k (0.6%) | 949.4k (109%) | 47 (0.0%) | 3600s |
+| GAP+FC (cal.) | 12.0k† | 4.8k (40%) | 58.0k (484%) | 47 (0.4%) | 12.4s |
+| ResNet-8 | 772.4k | 41.9k (5.4%) | 927.7k (120%) | 47 (0.0%) | 3600s |
+| ToyAdmos | 20.6k | 1.98M (9633%) | 31.8M (no hoisting: non-linear head) | 47 (0.2%) | 234s |
+| MobileBERT | 870.9k | 35.6k (4.1%) | 927.7k (107%) | 47 (0.0%) | 3600s |
 
-*Source: gap_fc row is measured (Phases 1/2b/4); other rows are cycle-model estimates.*
+*Source: gap_fc XAI cells are measured (Phases 1/2b/4); other rows are cycle-model estimates of scalar-core XAI kernels. † Inference is a planning budget; no inference kernel has been simulated, so all inference figures are uncalibrated.*
 
 ## XAI Method Summary
 

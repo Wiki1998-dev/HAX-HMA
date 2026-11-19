@@ -46,8 +46,8 @@ Until now, we have focused on the **GAP + FC (Global Average Pooling + Fully Con
 
 ### 4.1 Phase 1: Grad-CAM (Scalar Baseline)
 We implemented the Grad-CAM backward pass using a transpose-GeMM pattern on the RISC-V core.
-- **Performance**: 6,153 cycles for a 4x4x16 feature map.
-- **Bottleneck**: Floating-point division in the normalization step accounted for **68.8%** of total cycles.
+- **Performance**: 4,757 cycles for a 4x4x16 feature map (originally reported as 6,153, which included an out-of-bounds read; corrected 2026-11-19).
+- **Bottleneck**: None dominant — every loop costs ~7–8 cycles/element; the weighted sum is the largest stage (42.5%). An earlier claim that fdiv took 68.8% came from estimates, not counters.
 - **Verification**: 0/16 BIST errors (100% match with Python reference).
 
 ### 4.2 Phase 2: Gradient SHAP (Optimization Cycle)

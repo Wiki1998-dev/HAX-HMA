@@ -1,5 +1,16 @@
 # INT8 Grad-CAM backward_gemm via SSR+frep Implementation Plan
 
+> **Status (2026-11-19): done, with deviations.** Tasks 1–3 landed in commits
+> `8703bf4`, `c8d6bcc`, `5a58456`. Task 4's SSR+frep variant was **removed**: it did not
+> compile (rtl-generic runtime does not expose the SSR API; toolchain targets generic
+> rv32imafdzfh) and `vfdotpex.s.b` is an FP8 dot product, so it was numerically wrong
+> for int8 weights. Only the scalar `gradcam_backward_gemm_i8` remains. Tasks 5–6 done
+> (`main.c` `GEMM_I8` path; `make ... GEMM_I8=1 all`), plus a fix for an out-of-bounds
+> read in the GAP step that would otherwise have read INT8 weight bytes. Measured:
+> fp32 4,757 cycles, INT8-weight 6,923 cycles (backward GeMM 1,167 → 3,611), both
+> 0/16 BIST errors. The "~2-4x fewer cycles" expectation below did not hold on the
+> scalar core. Checkboxes below were not maintained.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Quantize the FC weight matrix to INT8 and route the Grad-CAM backward GeMM through the Snitch SSR+frep SIMD path, replacing the float32 scalar loop and reporting the cycle speedup.

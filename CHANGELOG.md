@@ -1,5 +1,78 @@
 # Changelog
 
+## 2026-11-19: ResNet-8 inference measured on GeMMX
+
+### Added
+- `snax_cluster/sw/xai/inference_gemmx/` + `scripts/run_inference_gemmx.sh`: all 8 ResNet-8
+  layers on GeMMX, each verified with 0 errors. Total **71,798 cycles** (11 launches, ~2,530
+  config cycles each, 44.5% accelerator busy). The cost model predicted 772k (10.8× too high).
+- Grad-CAM on GeMMX = **11.1%** of measured ResNet-8 inference.
+- `docs/gemmx/INFERENCE_GEMMX.md`.
+- ToyAdmos inference: 10 FC layers on GeMMX (1×1 convs, batch 1), 0 errors. Total
+  **30,402 cycles**, 84% of it launch configuration, 15.2% accelerator busy
+  (`MODEL=toyadmos scripts/run_inference_gemmx.sh`).
+
+### Fixed
+- Stock GeMMX conv flow on `snax_KUL_cluster`:
+  - it emitted 4 temporal loops for 3-D streamers, which hung the run;
+  - it passed 1 of 2 C/D32 spatial strides;
+  - the A spatial stride for stride-2 layers was wrong.
+- Grad-CAM/SHAP GeMMX apps now pass both C/D32 spatial strides; re-verified with 0 errors.
+
+## 2026-11-19: Gradient SHAP on the SNAX GeMMX accelerator
+
+### Added
+- `snax_cluster/sw/xai/shap_gemmx/`: hoisted Gradient SHAP as one GeMMX launch.
+  `N·x − Σᵢ bᵢ = [−1…−1, N] @ [b₁;…;b_N; x]`, with baselines pre-packed into the B layout.
+  The DMA core scatters `x` into B while core 0 writes the GeMMX CSRs; the core then
+  computes `g[k]·S[e]`. Scalar int8 reference path on the same core; bit-exact BIST.
+- Results (GAP+FC, N=16, warm): **5,824 vs 22,673 cycles** scalar int8 (**3.9×**), 0/256
+  errors on both paths. Exact for linear heads only.
+- `docs/gemmx/SHAP_GEMMX.md`; paper §4.6 extended.
+
+## 2026-11-19: Grad-CAM on the SNAX GeMMX accelerator
+
+### Added
+- `snax_cluster/sw/xai/gradcam_gemmx/`: both Grad-CAM GeMMs on GeMMX (int8). GeMM1's SIMD
+  requantiser writes alpha straight into GeMM2's B operand (no core glue); integer-only
+  (KUL cores have no FPU); scalar int8 reference path on the same core; bit-exact BIST.
+- Results (warm): ResNet-8 hook layer 8,043 vs 68,978 cycles scalar int8 (**8.6×**);
+  GAP+FC 6,602 vs 3,862 (1.7× slower). ~3,000-cycle launch overhead per GeMM dominates.
+- Built the `snax_KUL_cluster` Verilator simulator; `scripts/snax_cluster_mode.sh` switches
+  between plain and GeMMX clusters (verified round trip: Phase 1 still 4,757 cycles, 0/16).
+
+### Fixed
+- `target/common/common.mk` local patch now only adds `snitch_cluster_wrapper.sv` when bender
+  lists no cluster wrapper, so SNAX configs build.
+
+
+## 2026-11-19: INT8 Grad-CAM measured, cost model calibrated, doc corrections
+
+### Fixed
+- `gradcam.h` did not compile: the INT8 SSR variant used SSR APIs the rtl-generic
+  runtime does not expose and `vfdotpex.s.b`, an FP8 (not INT8) instruction.
+  Removed it; the scalar INT8-weight path remains.
+- Out-of-bounds read in Grad-CAM: `gradcam_gap_weights` was called with H×W
+  spatial positions on a K-element gradient buffer. BIST passed only because the
+  over-read L1 was zero. Now called with 1×1 (gradient is spatially uniform).
+
+### Added
+- `GEMM_I8` build path (`main.c`, `Makefile`: `make ... GEMM_I8=1 all`).
+- Verilator results, both 0/16 BIST errors: fp32 **4,757** cycles (was 6,153 with
+  the bug), INT8-weight **6,923** cycles (backward GeMM 3.1× slower on the scalar core).
+- Cost model restructured: XAI methods priced on the scalar core per stage,
+  matching the C kernels; within 0.2% of all GAP+FC measurements (Grad-CAM,
+  SHAP 2a, SHAP 2b, symbolic). 3 xfail calibration tests now pass at 5% tolerance.
+  Hoisted SHAP falls back to naive for non-linear heads (ToyAdmos).
+
+### Corrected docs
+- Phase 1 breakdown (68.8% fdiv) was estimated, not measured; replaced with counters.
+- Symbolic rule cost: 47 cycles measured (not ~15–25).
+- GAP+FC inference (12.0k) is a planning budget, not a measurement.
+- Paper: wrong ECQx and SNAX citations fixed; novelty claim flagged for a literature search;
+  26× SHAP scaling claim corrected to ~2.8×.
+
+
 ## Phase 4: Neuro-Symbolic Rule Extraction (2026-04)
 
 ### Python Reference Implementation
@@ -21,7 +94,7 @@
 ### Research Narrative Closed
 Phase 1 Grad-CAM (WHERE) → Phase 2 SHAP (WHY) → Phase 3 QVIP (SAFE) →
 **Phase 4 Rules (WHAT)** — distill the black-box into ~8 auditable IF-THEN
-rules that run in ~20 cycles on RISC-V, cheaper than any other XAI method.
+rules that run in 47 cycles (measured) on RISC-V, cheaper than any other XAI method.
 
 ---
 
@@ -156,6 +229,6 @@ Deploy on SNAX with runtime XAI + formal safety guarantees
 
 ### Verification Results
 - **BIST**: 0/16 errors (all 16 spatial positions match golden reference within 1e-3)
-- **Total cycles**: 6,153 on RISC-V scalar core (float32)
-- **Cycle breakdown**: transpose=~120, gemm=~600, gap=~400, wsum=~800, relu_norm=~4233
-- **Key insight**: FPU division in normalize step dominates (68.8% of total)
+- **Total cycles**: 6,153 on RISC-V scalar core (float32) — *superseded, see 2026-11-19 entry*
+- **Cycle breakdown**: transpose=~120, gemm=~600, gap=~400, wsum=~800, relu_norm=~4233 — *these were estimates; the simulator's counters were 1124/1167/1516/2015/331*
+- **Key insight**: FPU division in normalize step dominates (68.8% of total) — *incorrect, normalize was ~5%*

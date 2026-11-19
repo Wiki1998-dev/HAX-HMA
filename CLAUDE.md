@@ -85,10 +85,24 @@ Read these when working on related code — they contain the formulations and ha
 ## Phase 1 Status: COMPLETE, VERIFIED
 
 Grad-CAM on SNAX cluster (RISC-V scalar core, float32):
-- **6,153 cycles**, 0/16 BIST errors, H=4 W=4 K=16 C=10
+- **4,757 cycles** fp32, 0/16 BIST errors, H=4 W=4 K=16 C=10 (published 6,153 included a GAP-step out-of-bounds read, fixed 2026-11-19)
+- INT8-weight variant (`GEMM_I8=1`): **6,923 cycles**, 0/16 errors — backward GeMM is 3.1× slower on the scalar core (GeMMX offload: see below)
+- Build with BIST (from `snax_cluster/`): `RISCV_CFLAGS=-DBIST pixi run make -C target/snitch_cluster/sw/apps/xai/gradcam [GEMM_I8=1] all`, run `target/snitch_cluster/bin/snitch_cluster.vlt <elf>`. Do not `make clean` — it deletes the tracked `data.h`
 - Python reference: 11/11 tests passing
 - Key patches applied: `Xdiv_sqrt: true` in cluster config, core-gating fix (`snrt_cluster_core_idx() == 0`)
 - Full results: `docs/phase1/PHASE1_SUMMARY.md`
+
+## GeMMX Accelerator Grad-CAM: WORKING, VERIFIED
+
+Grad-CAM with both matrix products on the SNAX GeMMX accelerator (`snax_KUL_cluster`, int8), see `docs/gemmx/GRADCAM_GEMMX.md`:
+- ResNet-8 hook layer (8×8×64): **8,043 cycles vs 68,978 scalar int8 on the same core (8.6×)**; GAP+FC (4×4×16): 6,602 vs 3,862 (1.7× slower — launch overhead)
+- Bit-exact BIST (0 errors) for both sizes, cold and warm
+- **ResNet-8 inference on GeMMX** (`docs/gemmx/INFERENCE_GEMMX.md`, `scripts/run_inference_gemmx.sh`): 71,798 cycles measured, all layers 0 errors; Grad-CAM = 11.1% of it. Stock `snax-gemmx-conv` hangs on this cluster: use `sw/xai/inference_gemmx` (fixes documented there)
+- **SHAP on GeMMX** (`docs/gemmx/SHAP_GEMMX.md`, app `sw/xai/shap_gemmx/`): hoisted SHAP's sample loop as one GeMM `[−1…−1,N] @ [b;x]`; GAP+FC N=16: **5,824 vs 22,673 cycles scalar int8 (3.9×)**, bit-exact; linear heads only
+- ~3,000 cycles CSR config per GeMM launch dominates; accelerator busy <2% of the time
+- Cluster cores are rv32ima (no FPU): kernel is integer-only (Q15 output)
+- Switch clusters: `scripts/snax_cluster_mode.sh plain|gemmx|status` (plain = Phases 1/2/4; rebuild apps after switching)
+- SNAX files are git-ignored by the outer repo: add new ones with `git add -f`
 
 ## Phase 2 Status: COMPLETE, VERIFIED
 
@@ -120,7 +134,7 @@ Neuro-symbolic rule extraction (host-side Python + generated C):
 - Uses only top-K most-salient features from Grad-CAM/LRP/SHAP
 - Two C export formats: nested if/else (inline) and flat node table
 - Integer-only inference (no FPU) — thresholds quantized to fixed-point
-- Expected embedded cycle count: ~15–25 cycles on RV32IMF (≈300× cheaper than Grad-CAM)
+- Measured embedded cycle count: **47 cycles** on SNAX (≈100× cheaper than Grad-CAM)
 - Fidelity metrics: overall, per-class, coverage, saliency agreement
 - Design doc: `docs/phase4/PHASE4_DESIGN.md`
 
@@ -146,6 +160,14 @@ Formal verification of quantized neural networks (host-side Python):
 - `src/xai/formal/bound_propagation.py` — Layer-by-layer interval bounds
 - `src/xai/formal/qvip_verifier.py` — ILP robustness verification engine
 - `tests/test_formal_verification.py` — 33 tests
+
+## Phase 5 Status: IN PROGRESS
+
+Benchmark framework + cycle cost model (host-side Python), see `docs/phase5/PHASE5_STATUS.md`:
+- Cost model prices XAI kernels on the **scalar core** per stage; within 0.2% of all GAP+FC measurements (enforced at 5% by `_verify_calibration`)
+- Inference cycles (GeMM path) are **uncalibrated**; GAP+FC inference 12.0k is a planning budget
+- Non-GAP+FC rows are extrapolated estimates
+- Tests: 279 passed, 3 skipped (slow), 0 xfail
 
 ## Benchmarks
 

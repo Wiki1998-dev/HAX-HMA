@@ -103,15 +103,27 @@ TOTAL:               128 kB   ← tight! use double-buffering carefully
 ## Phase 1 Status: COMPLETE, VERIFIED
 
 Grad-CAM kernel verified on Snitch cluster via Verilator:
-- **6,153 cycles** on single RISC-V core (float32), 0/16 BIST errors
+- **4,757 cycles** on single RISC-V core (float32), 0/16 BIST errors (6,153 before the 2026-11-19 GAP out-of-bounds fix)
+- INT8-weight build (`GEMM_I8=1`): 6,923 cycles, 0/16 errors
+- BIST is not on by default: build with `RISCV_CFLAGS=-DBIST`
 - Source: `sw/xai/gradcam/` (kernel + data generation)
 - Target: `target/snitch_cluster/sw/apps/xai/gradcam/`
 - Config: `target/snitch_cluster/cfg/snitch_cluster.hjson` (Xdiv_sqrt enabled)
+
+### GeMMX Grad-CAM (snax_KUL_cluster)
+- App: `sw/xai/gradcam_gemmx/` → `target/snitch_cluster/sw/apps/xai/gradcam_gemmx/` (`SIZE=resnet8` for 8×8×64)
+- Needs the KUL simulator: `../scripts/snax_cluster_mode.sh gemmx` (binaries kept as `bin/snitch_cluster.{plain,kul}.vlt`)
+- KUL cores are rv32ima (no FPU) — no float code on this cluster
+- Switching configs: `generated/bender_targets.tmp` is not regenerated if it exists, and the runtime lib does not track the generated headers (rebuild with `-B`); the mode script handles both
+- Results: `../docs/gemmx/GRADCAM_GEMMX.md`
+- SHAP app: `sw/xai/shap_gemmx/` → `target/snitch_cluster/sw/apps/xai/shap_gemmx/`; results `../docs/gemmx/SHAP_GEMMX.md`
+- Both cores must hit every `snrt_cluster_hw_barrier()`; don't `printf` on the DMA core before a barrier the compute core is timing (it stalled the GeMM window by ~4k cycles)
 
 ### Patches Applied
 - `Xdiv_sqrt: true` on both core definitions (lines 107, 111) — enables FPU div/sqrt
 - Compute guard: `snrt_cluster_core_idx() == 0` instead of `!snrt_is_dm_core()`
 - Build dep: `$(DEP): $(ROOT)/sw/xai/gradcam/data/data.h` in target Makefile
+- `target/common/common.mk`: appends `snitch_cluster_wrapper.sv` to the Verilator file list only when bender lists no `*_cluster_wrapper.sv` (made conditional 2026-11-19 so SNAX configs build)
 
 ## Do Not Edit
 - `hw/` — regenerated from .hjson by hardware generator

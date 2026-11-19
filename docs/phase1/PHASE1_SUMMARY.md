@@ -4,7 +4,25 @@
 **Date**: 2025-04-06  
 **Platform**: SNAX cluster (single RISC-V RV32IMF core, Verilator RTL simulation)
 
-## Verified Results
+> **Correction (2026-11-19).** The 6,153-cycle result below included an out-of-bounds
+> read in the GAP step, and the cycle breakdown table was an estimate that never matched
+> the simulator's per-stage counters. With the bug fixed the kernel takes **4,757 cycles**
+> (0/16 BIST errors). Measured breakdown:
+>
+> | Step | Cycles (fixed, fp32) | Cycles (as published) | INT8-weight build |
+> |------|------:|------:|------:|
+> | Transpose | 1,124 | 1,124 | 1,118 |
+> | Backward GeMM | 1,167 | 1,167 | 3,611 |
+> | GAP / alpha | 111 | 1,516 (OOB read) | 108 |
+> | Weighted sum | 2,022 | 2,015 | 1,755 |
+> | ReLU + normalize | 333 | 331 | 331 |
+> | **Total** | **4,757** | **6,153** | **6,923** |
+>
+> There is no single bottleneck: every loop costs ~7–8 cycles per element. Normalization
+> is ~7%, not 68.8%. Build with BIST: `RISCV_CFLAGS=-DBIST pixi run make -C
+> target/snitch_cluster/sw/apps/xai/gradcam [GEMM_I8=1] all` (from `snax_cluster/`).
+
+## Verified Results (original, superseded)
 
 - **Total cycles**: 6,153 (on RISC-V scalar core, float32)
 - **Errors**: 0/16 (BIST verification against Python golden reference, tolerance 1e-3)

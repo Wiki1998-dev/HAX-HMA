@@ -8,7 +8,7 @@
 
 ## Abstract
 
-This work presents the first systematic implementation and evaluation of Explainable AI (XAI) methods on heterogeneous embedded multi-accelerator platforms. We implement four complementary XAI techniques — Grad-CAM, Gradient SHAP, QVIP formal verification, and neuro-symbolic rule extraction — targeting the SNAX cluster (RISC-V + GeMM accelerator) and CFU Playground (FPGA + VexRiscv). Our key contributions include: (1) the first reported Grad-CAM cycle count on embedded RISC-V (6,153 cycles), (2) a backward-hoisting optimization that achieves 3.02x speedup for Gradient SHAP by exploiting gradient independence in linear model heads, (3) saliency-guided formal verification that focuses ILP solver effort on high-importance regions identified by XAI, and (4) a neuro-symbolic rule extraction pipeline that distills neural network behavior into auditable decision trees executable in ~47 cycles on RV32IMF. All methods are evaluated across four MLPerf Tiny benchmark architectures (ResNet-8, ToyAdmos, MobileBERT-tiny, GAP+FC) using a calibrated SNAX cycle cost model.
+This work presents the first systematic implementation and evaluation of Explainable AI (XAI) methods on heterogeneous embedded multi-accelerator platforms. We implement four complementary XAI techniques — Grad-CAM, Gradient SHAP, QVIP formal verification, and neuro-symbolic rule extraction — on the SNAX cluster (RISC-V + GeMM accelerator); a CFU Playground (FPGA + VexRiscv) port is planned but not yet implemented. All measured kernels currently run on the RISC-V scalar core. Our key contributions include: (1) a measured Grad-CAM cycle count on embedded RISC-V (4,757 cycles), (2) a backward-hoisting optimization that achieves 3.02x speedup for Gradient SHAP by exploiting gradient independence in linear model heads, (3) saliency-guided formal verification that focuses ILP solver effort on high-importance regions identified by XAI, and (4) a neuro-symbolic rule extraction pipeline that distills neural network behavior into auditable decision trees executable in ~47 cycles on RV32IMF. All methods are evaluated across four MLPerf Tiny benchmark architectures (ResNet-8, ToyAdmos, MobileBERT-tiny, GAP+FC) using a SNAX cycle cost model calibrated to within 0.2% of the GAP+FC measurements; numbers for the larger models are extrapolated estimates.
 
 ---
 
@@ -26,11 +26,11 @@ Deep Neural Networks (DNNs) are increasingly deployed in safety-critical edge ap
 
 This work makes the following contributions:
 
-1. **First embedded Grad-CAM implementation** with measured cycle counts on RISC-V (6,153 cycles on Snitch RV32IMF for a 4x4x16 feature map)
+1. **Embedded Grad-CAM implementation** with measured cycle counts on RISC-V (4,757 cycles on the Snitch scalar core for a 4x4x16 feature map), plus an INT8-weight variant (6,923 cycles)
 2. **Backward-hoisting optimization for Gradient SHAP** that reduces cost from 175,510 to 58,022 cycles (3.02x speedup) by exploiting gradient independence in linear model heads
 3. **Saliency-guided formal verification** combining Grad-CAM saliency with QVIP ILP verification to focus solver effort on high-importance input regions
 4. **Neuro-symbolic rule extraction** that distills neural network behavior into depth-3 decision trees using only the top-K most salient features, executable in ~47 cycles with integer-only arithmetic
-5. **Cross-model benchmark framework** evaluating all four XAI methods across four MLPerf Tiny architectures with a calibrated SNAX cycle cost model
+5. **Cross-model benchmark framework** evaluating all four XAI methods across four MLPerf Tiny architectures with a SNAX cycle cost model calibrated per stage against the GAP+FC measurements
 
 ### 1.4 Research Narrative
 
@@ -38,10 +38,10 @@ The four phases form a coherent explanatory pipeline:
 
 | Phase | Method | Question Answered | Cost (GAP+FC) |
 |-------|--------|-------------------|---------------|
-| 1 | Grad-CAM | **WHERE** is the model looking? | 6,153 cycles |
+| 1 | Grad-CAM | **WHERE** is the model looking? | 4,757 cycles |
 | 2 | Gradient SHAP | **WHY** does each feature matter? | 58,022 cycles |
 | 3 | QVIP Verification | Is the quantized model **SAFE**? | 12.4s (host) |
-| 4 | Rule Extraction | **WHAT** rules is the model following? | ~47 cycles |
+| 4 | Rule Extraction | **WHAT** rules is the model following? | 47 cycles |
 
 Each phase builds on the previous: Grad-CAM saliency guides SHAP feature selection, SHAP attributions inform ECQx quantization policy, formal verification proves the quantized model is safe in salient regions, and rule extraction distills the entire pipeline into auditable IF-THEN rules.
 
@@ -98,9 +98,9 @@ If the negated property's ILP is infeasible, the network is provably robust with
 |------|----------|--------|--------|
 | Pan & Mishra (2023) | Cloud TPU (128 cores) | Grad-CAM/SHAP on ResNet-50 | 39x speedup over CPU |
 | ApproXAI (2025) | Edge GPU | Approximate XAI | Energy reduction via approximate computing |
-| **This work** | **SNAX RISC-V (embedded)** | **Grad-CAM, SHAP, QVIP, Rules** | **First embedded XAI cycle counts** |
+| **This work** | **SNAX RISC-V (embedded)** | **Grad-CAM, SHAP, QVIP, Rules** | **Embedded XAI cycle counts (scalar core)** |
 
-No prior work reports XAI-specific cycle counts on embedded RISC-V platforms. Our measurements establish the first baseline for this workload class.
+We are not aware of prior work reporting XAI-specific cycle counts on embedded RISC-V platforms. **[TODO before submission: back this with a systematic literature search.]**
 
 ---
 
@@ -242,26 +242,45 @@ Step 4: ReLU + Normalize   cam = ReLU(cam) / max(cam)
 **Platform**: SNAX cluster, single RISC-V RV32IMF core, Verilator RTL simulation
 **Configuration**: H=4, W=4, K=16 channels, C=10 classes, float32
 
-| Step | Operation | Cycles | % of Total |
-|------|-----------|-------:|----------:|
-| 0 | Transpose W_fc (KxC) | ~120 | 2.0% |
-| 1 | Backward GeMM (1x10 @ 10x16) | ~600 | 9.7% |
-| 2 | Global Average Pool | ~400 | 6.5% |
-| 3 | Weighted Sum (16 pos x 16 ch) | ~800 | 13.0% |
-| 4 | ReLU + Normalize | ~4,233 | **68.8%** |
-| **Total** | | **6,153** | **100%** |
+Per-stage `mcycle` counters (Verilator, 2026-11-19):
 
-**BIST Verification**: 0/16 errors (tolerance 1e-3 against Python golden reference)
+| Step | Operation | fp32 cycles | % | INT8-weight cycles |
+|------|-----------|-------:|----:|-------:|
+| 0 | Transpose W_fc (KxC = 160) | 1,124 | 23.6% | 1,118 |
+| 1 | Backward GeMM (1x10 @ 10x16) | 1,167 | 24.5% | **3,611** |
+| 2 | Alpha (GAP of gradient) | 111 | 2.3% | 108 |
+| 3 | Weighted Sum (16 pos x 16 ch) | 2,022 | **42.5%** | 1,755 |
+| 4 | ReLU + Normalize | 333 | 7.0% | 331 |
+| **Total** | | **4,757** | **100%** | **6,923** |
+
+**BIST Verification**: 0/16 errors for both builds (tolerance 1e-3 fp32, 1e-2 INT8).
+
+> **Erratum.** An earlier draft reported 6,153 cycles with an estimated breakdown attributing 68.8% (~4,233 cycles) to ReLU+Normalize. Neither held: the estimated breakdown never matched the per-stage counters (normalize was 331 cycles even then), and 6,153 included ~1,400 cycles in the GAP step caused by an out-of-bounds read — `gradcam_gap_weights` was called with H×W spatial positions on a K-element gradient buffer and passed BIST only because the over-read L1 was zero. The fixed kernel treats the spatially uniform gradient as a single 1×1 position.
 
 ### 4.5 Key Findings
 
-1. **FPU division dominates**: The `fdiv.s` instruction on the Snitch FPU has multi-cycle latency (~25 cycles), causing the normalization step to consume 68.8% of total cycles. The compute-heavy steps (GeMM, weighted sum) use pipelined `fmadd.s` (single-cycle throughput) and are fast.
+1. **No single bottleneck; loop overhead dominates**: Every stage costs ~7–8 cycles per MAC or element (load, load, `fmadd.s`, loop bookkeeping). The weighted sum is the largest stage (42.5%) simply because it touches the most elements (256). Normalization is cheap (7%) — one `fdiv.s` for the reciprocal, then multiplies. SSR/frep streaming or GeMM offload, not division avoidance, is the lever.
 
-2. **Xdiv_sqrt hardware fix**: The Snitch core's FPU lacked `fdiv.s` and `fsqrt.s` by default. Without `Xdiv_sqrt: true` in the cluster config, division traps to an illegal instruction exception. This required a hardware configuration fix in `snitch_cluster.hjson`.
+2. **INT8 weights alone do not help on the scalar core**: The INT8-weight backward GeMM is 3.1× *slower* (3,611 vs 1,167 cycles) because each element adds an int→float convert, an extra multiply and a float→int convert. The benefit of INT8 requires the GeMM accelerator.
 
-3. **Core-gating fix**: The original template used `!snrt_is_dm_core()` which runs on all non-DM cores. Changed to `snrt_cluster_core_idx() == 0` for deterministic single-core execution.
+3. **Xdiv_sqrt hardware fix**: The Snitch core's FPU lacked `fdiv.s` and `fsqrt.s` by default. Without `Xdiv_sqrt: true` in the cluster config, division traps to an illegal instruction exception. This required a hardware configuration fix in `snitch_cluster.hjson`.
 
-4. **No prior embedded baselines**: No prior work reports Grad-CAM-specific cycle counts on embedded RISC-V. Our 6,153 cycles establishes the first baseline for this workload class.
+4. **Core-gating fix**: The original template used `!snrt_is_dm_core()` which runs on all non-DM cores. Changed to `snrt_cluster_core_idx() == 0` for deterministic single-core execution.
+
+5. **Embedded baseline**: We are not aware of prior Grad-CAM-specific cycle counts on embedded RISC-V (see the TODO in §2.3).
+
+### 4.6 GeMMX Accelerator Offload
+
+Both Grad-CAM GeMMs run on the SNAX GeMMX accelerator (`snax_KUL_cluster`: 8×8×8 int8 mesh, SIMD requantiser; controller and DMA cores are rv32ima without FPU, so the pipeline is integer-only with Q15 output). GeMM1's SIMD unit requantises the gradient and writes it directly into GeMM2's B operand — the int8 output block layout matches B's — so no core work is needed between the two GeMMs. The same integer pipeline also runs as scalar loops on the same core; both are bit-exact against the golden model.
+
+| Size | GeMMX | Scalar int8 (same core) | Speedup |
+|------|------:|------:|------:|
+| GAP+FC (4×4×16) | 6,602 | 3,862 | 0.58× |
+| ResNet-8 hook (8×8×64) | 8,043 | 68,978 | **8.6×** |
+
+The weighted-sum GeMM alone drops from 62,023 to 3,009 cycles (20.6×) at ResNet-8 size. However, the mesh is busy for only 151 of the 8,043 cycles: each launch costs ~3,000 cycles of CSR configuration independent of problem size. Accelerator offload therefore only pays off above a size threshold, and reaching the >90% utilisation target requires amortising launches. Details: `docs/gemmx/GRADCAM_GEMMX.md`.
+
+**Gradient SHAP on GeMMX.** With a linear head the hoisted gradient `g` is shared by all samples, so `Σᵢ (x − bᵢ) ⊙ g = g ⊙ (N·x − Σᵢ bᵢ)`, and `N·x − Σᵢ bᵢ` is one GeMM: `[−1,…,−1, N] @ [b₁;…;b_N; x]`. The static baselines are pre-packed into GeMMX's B layout. The DMA core scatters the runtime input `x` into B while the controller core writes the GeMMX CSRs, which hides the scatter. The core then does one elementwise pass, `g[k]·S[e]`. GAP+FC, N=16, warm: **5,824 cycles vs 22,673** for the same integer algorithm on the same core (**3.9×**). Both are bit-exact; quantisation error vs float32 is 0.54%. This reformulation is exact only for linear heads. Details: `docs/gemmx/SHAP_GEMMX.md`.
 
 ---
 
@@ -440,7 +459,7 @@ Our key integration: use Grad-CAM saliency (Phase 1) to identify critical input 
 
 ### 6.4 ECQx: Saliency-Guided Quantization
 
-ECQx (Guillard et al., 2022) assigns per-weight quantization bit-widths based on XAI relevance:
+ECQx (Becking et al., 2022) assigns per-weight quantization bit-widths based on XAI relevance:
 
 - Weights attached to **high-saliency outputs** get full precision (8 bits)
 - Weights attached to **low-saliency outputs** get aggressive quantization (4 bits)
@@ -556,9 +575,9 @@ Both generate complete `#ifndef`-guarded headers with only `<stdint.h>` dependen
 |--------|-------|
 | Tests passing | 33/33 |
 | GCC compile+run round-trip | Verified (C output matches Python) |
-| Expected SNAX cycle count | ~15-25 cycles (RV32IMF integer branch cascade) |
-| Measured calibration value | 47 cycles |
-| Speedup vs Grad-CAM | ~130x (47 vs 6,153) |
+| Initial estimate | ~15-25 cycles (RV32IMF integer branch cascade) |
+| Measured SNAX cycle count | 47 cycles |
+| Speedup vs Grad-CAM | ~101x (47 vs 4,757) |
 | Speedup vs SHAP (hoisted) | ~1,234x (47 vs 58,022) |
 
 ### 7.8 Test Coverage
@@ -591,36 +610,43 @@ All XAI methods are evaluated across four MLPerf Tiny architectures:
 
 ### 8.2 SNAX Cycle Cost Model
 
-The cost model estimates SNAX cycles without running hardware simulation:
+The cost model (`src/xai/benchmark/cycle_model.py`) estimates SNAX cycles without running hardware simulation. It has two parts:
 
-**GeMM layers** (conv, FC, attention, FFN):
-```
-cycles = max(gemm_min_cycles, macs / gemm_macs_per_cycle) + gemm_launch_overhead
-```
+**Inference** (uncalibrated): GeMM layers are priced on the accelerator as `max(gemm_min_cycles, macs / gemm_macs_per_cycle) + gemm_launch_overhead`; scalar layers (GAP, pool, layernorm, embedding) as `scalar_overhead + ops / scalar_ops_per_cycle`. No inference kernel has been simulated, so these are assumptions.
 
-**Scalar layers** (GAP, pool, layernorm, embedding):
-```
-cycles = scalar_overhead + ops / scalar_ops_per_cycle
-```
+**XAI methods** (calibrated): priced on the RISC-V *scalar* core, where every measured XAI kernel runs. Each method is a sum of per-stage costs with the same structure as the C kernel, using per-element constants fitted to the Verilator per-stage counters (E = hook-layer elements, M = head GeMM MACs, N = SHAP samples):
 
-**Calibration**: Parameters tuned so GAP+FC predictions match Phase 1/2b measurements within 15%.
+| Method | Model | GAP+FC predicted | Measured | Error |
+|--------|-------|-----:|-----:|-----:|
+| Grad-CAM | 7.5·M (transpose) + 7.5·M (bwd) + 64+3·K (alpha) + 7.5·E (wsum) + 20·HW (post) | 4,752 | 4,757 | −0.1% |
+| SHAP naive | 4·E + N·(12·E + 7.5·M + 5·GAP + 7.5·E + 13·E) + 7·E | 175,616 | 175,510 | +0.06% |
+| SHAP hoisted | 4·E + 7.5·E + N·13·E + 7·E | 57,984 | 58,022 | −0.07% |
+| Symbolic | constant | 47 | 47 | 0% |
+
+Hoisting is exact only for linear heads (one GeMM layer, e.g. GAP+FC). For non-linear heads (ToyAdmos: 5 FC layers) the model adds a backward pass through the head per sample and hoisted SHAP falls back to the naive cost. `_verify_calibration` enforces a 5% tolerance in the test suite.
 
 ### 8.3 Comparison Matrix
 
+Generated by `run_phase5_benchmark()`; percentages are XAI overhead relative to inference.
+
 | Model | Inference | Grad-CAM | SHAP (naive) | SHAP (hoisted) | QVIP (host) | Symbolic |
 |-------|----------:|---------:|-------------:|---------------:|------------:|---------:|
-| GAP+FC (measured) | 12.0k | 6.2k (51%) | 175.5k (1463%) | 58.0k (483%) | 12.4s | 47 (0.4%) |
-| ResNet-8 (est.) | 772.4k | 4.8k (0.6%) | 24.7M (3201%) | 949.4k (123%) | 3600s | 47 (0.0%) |
-| ToyAdmos (est.) | 20.6k | 11.0k (54%) | 664.3k (3227%) | 359.8k (1748%) | 234s | 47 (0.2%) |
-| MobileBERT (est.) | 870.9k | 4.8k (0.6%) | 27.9M (3201%) | 949.4k (109%) | 3600s | 47 (0.0%) |
+| GAP+FC (XAI measured) | 12.0k† | 4.8k (40%) | 175.5k (1463%) | 58.0k (484%) | 12.4s | 47 (0.4%) |
+| ResNet-8 (est.) | 772.4k | 41.9k (5.4%) | 2.58M (334%) | 927.7k (120%) | 3600s | 47 (0.0%) |
+| ToyAdmos (est.) | 20.6k | 1.98M (9633%) | 31.8M (154348%) | 31.8M (= naive) | 234s | 47 (0.2%) |
+| MobileBERT-tiny (est.) | 870.9k | 35.6k (4.1%) | 2.53M (291%) | 927.7k (107%) | 3600s | 47 (0.0%) |
+
+† Planning budget, not a measurement — no inference kernel has been simulated. All inference figures and all non-GAP+FC rows are estimates.
 
 ### 8.4 Scaling Analysis
 
-**Grad-CAM scales favorably**: For larger models (ResNet-8, MobileBERT), Grad-CAM overhead drops to <1% of inference because the backward GeMM only operates on the head weights, not the full network. The backbone inference (already paid) dominates.
+**Grad-CAM overhead falls with model size for linear heads**: For ResNet-8 and MobileBERT-tiny it is ~4–5% of (estimated) inference, because the work is proportional to the hook-layer size and the small head, while inference grows with the whole backbone. This is the only method besides symbolic rules that meets the <20% target, and only in these estimates.
 
-**Hoisted SHAP scales better than naive**: The naive approach scales as O(N x full_inference), while hoisted SHAP scales as O(backbone + N x head). For ResNet-8, this means 949k vs 24.7M cycles — a 26x difference.
+**Hoisted SHAP saves ~2.8x over naive, not 26x**: Both variants attribute over the hook-layer features, so neither re-runs the backbone (matching the measured Phase 2a/2b kernels). Hoisting removes the per-sample interpolation, head forward and backward, leaving the accumulation (13 cycles/element/sample) — 927.7k vs 2.58M on ResNet-8. An earlier draft's 26x (949k vs 24.7M) assumed naive SHAP re-ran the full network per sample, which the measured kernel does not do.
 
-**Symbolic rules are O(1)**: The depth-3 tree evaluation costs ~47 cycles regardless of model size, because the tree only inspects the top-K most salient features.
+**ToyAdmos is pathological on the scalar core**: its 5-layer decoder head (132k MACs) must be traversed on the scalar core for every Grad-CAM/SHAP evaluation, while inference is (assumed) on the GeMM accelerator. Its XAI overheads show the cost of *not* offloading XAI to the accelerator, not a property of ToyAdmos.
+
+**Symbolic rules are O(1)**: The depth-3 tree evaluation costs 47 cycles regardless of model size, because the tree only inspects the top-K most salient features.
 
 **QVIP is host-bound**: Verification runs on the host CPU and scales super-linearly with model size. For ResNet-8-scale networks, solver timeouts become the practical limit.
 
@@ -650,9 +676,9 @@ predictions = runner.predict(X)        # teacher labels for distillation
 
 | Test File | Tests | Coverage |
 |-----------|------:|----------|
-| `test_phase5_benchmark.py` | 103 (3 xfail) | Model catalogue, cycle model, hoisted SHAP, ECQx, top-K, runner, formatters |
-| `test_benchmark_models.py` | 40+ | All 4 phases x all 4 models end-to-end |
-| **Total Phase 5** | **143+** | |
+| `test_phase5_benchmark.py` | 108 | Model catalogue, cycle model (incl. strict calibration), hoisted SHAP, ECQx, top-K, runner, formatters |
+| `test_benchmark_models.py` | 80 (3 skipped as slow) | All 4 phases x all 4 models end-to-end |
+| **Total Phase 5** | **188** | |
 
 ---
 
@@ -660,34 +686,35 @@ predictions = runner.predict(X)        # teacher labels for distillation
 
 ### 9.1 Test Coverage Across All Phases
 
-| Phase | Test File | Tests | Status |
-|-------|-----------|------:|--------|
-| 1 | `test_gradcam_reference.py` | 11 | All passing |
-| 2 | `test_shap_reference.py` | 13 | All passing |
-| 3 | `test_formal_verification.py` | 33 | All passing |
-| 4 | `test_rule_extraction.py` | 33 | All passing |
-| 5 | `test_phase5_benchmark.py` | 103 | 100 passing, 3 xfail (calibration) |
-| 5 | `test_benchmark_models.py` | 40+ | In progress |
-| **Total** | | **233+** | |
+Full suite: **279 passed, 3 skipped** (slow ResNet-8 runs), 0 expected failures (2026-11-19).
 
-### 9.2 Verified Cycle Counts (SNAX, GAP+FC Model)
+| Phase | Test File | Status |
+|-------|-----------|--------|
+| 1 | `test_gradcam_reference.py`, `test_gradcam_int8.py` | All passing |
+| 2 | `test_shap_reference.py` | All passing |
+| 3 | `test_formal_verification.py` | All passing |
+| 4 | `test_rule_extraction.py` | All passing |
+| 5 | `test_phase5_benchmark.py`, `test_benchmark_models.py` | All passing, 3 skipped |
 
-| Method | Cycles | Errors | Bottleneck |
+### 9.2 Verified Cycle Counts (SNAX scalar core, GAP+FC Model)
+
+| Method | Cycles | Errors | Largest stage |
 |--------|-------:|-------:|-----------|
-| Grad-CAM | 6,153 | 0/16 | fdiv in normalize (68.8%) |
+| Grad-CAM (fp32) | 4,757 | 0/16 | Weighted sum (42.5%) |
+| Grad-CAM (INT8 weights) | 6,923 | 0/16 | Backward GeMM (52.2%) |
 | SHAP naive (N=16) | 175,510 | 0/256 | Distributed across stages |
 | SHAP hoisted (N=16) | 58,022 | 0/256 | Accumulation (91.6%) |
-| Symbolic rules | 47 | — | Branch + load (~15-25 instructions) |
+| Symbolic rules | 47 | — | Branch + load |
 
 ### 9.3 Speedup Hierarchy
 
 ```
 Symbolic Rules:          47 cycles  |#
-Grad-CAM:            6,153 cycles  |################################################
-SHAP (hoisted):     58,022 cycles  |############################################(...) 
+Grad-CAM:            4,757 cycles  |####################################
+SHAP (hoisted):     58,022 cycles  |############################################(...)
 SHAP (naive):      175,510 cycles  |############################################(.............)
 
-Symbolic is   130x cheaper than Grad-CAM
+Symbolic is   101x cheaper than Grad-CAM
 Symbolic is 1,234x cheaper than hoisted SHAP
 Hoisted is   3.02x cheaper than naive SHAP
 ```
@@ -700,14 +727,13 @@ Hoisted is   3.02x cheaper than naive SHAP
 
 | Directory | Files | Purpose |
 |-----------|------:|---------|
-| `src/xai/gradcam/` | 3 | Grad-CAM + LRP reference, kernel, compiler pass |
-| `src/xai/shap/` | 3 | Gradient SHAP reference, kernel, async dispatcher |
+| `src/xai/gradcam/` | 1 | Grad-CAM reference (NumPy) |
+| `src/xai/shap/` | 1 | Gradient SHAP reference (NumPy) |
 | `src/xai/formal/` | 4 | Quantization, bound propagation, QVIP verifier |
 | `src/xai/symbolic/` | 4 | Rule extractor, C exporter, fidelity metrics |
 | `src/xai/benchmark/` | 7 | Model catalogue, cost model, runners, ECQx, top-K |
-| `src/xai/utils/` | 3 | Buffer planner, ZigZag wrapper, metrics |
 | `snax_cluster/sw/xai/` | 6+ | C kernels, data generators, test harnesses |
-| `tests/` | 6 | 233+ tests across all phases |
+| `tests/` | 7 | 282 tests (279 pass, 3 skipped) |
 | `docs/` | 7 | Design docs and results per phase |
 
 ### 10.2 Key Architectural Fixes Discovered
@@ -717,6 +743,8 @@ Hoisted is   3.02x cheaper than naive SHAP
 | `Xdiv_sqrt: true` in Snitch FPU config | Enabled `fdiv.s`/`fsqrt.s` instructions | 1 |
 | Core-gating: `snrt_cluster_core_idx() == 0` | Deterministic single-core execution | 1 |
 | Build system `data.h` dependency | Automatic golden data regeneration | 1 |
+| GAP-step out-of-bounds read fixed (`gradcam_gap_weights` called with 1×1) | 6,153 → 4,757 cycles; result no longer depends on stale L1 | 1 |
+| Broken SSR/`vfdotpex.s.b` INT8 variant removed (FP8 op, did not compile) | Grad-CAM builds again | 1 |
 | Backward hoisting for linear heads | 3.02x SHAP speedup | 2 |
 | Saliency-guided verification regions | Reduced ILP problem size | 3 |
 | Integer-only tree thresholds (scale=1024) | No FPU required for rule evaluation | 4 |
@@ -730,7 +758,7 @@ Hoisted is   3.02x cheaper than naive SHAP
 Our results reveal a clear cost hierarchy for embedded XAI:
 
 1. **Symbolic rules (~47 cycles)**: Essentially free — can be added to any deployment with negligible overhead
-2. **Grad-CAM (~6k cycles)**: Lightweight and fast, limited to spatial localization
+2. **Grad-CAM (~4.8k cycles)**: Lightweight and fast, limited to spatial localization
 3. **Hoisted SHAP (~58k cycles)**: Provides per-feature attributions but requires N head re-evaluations
 4. **Naive SHAP (~176k cycles)**: Baseline showing why architectural optimization is essential
 5. **QVIP verification (seconds, host)**: Compile-time cost, not runtime
@@ -751,8 +779,8 @@ Phase 3 demonstrated that high-saliency regions identified by Grad-CAM are more 
 ### 11.4 Limitations
 
 1. **Linear-only hoisting**: The 3.02x SHAP speedup is exact only for linear heads (GAP+FC). Non-linear heads (ReLU, softmax) require the full Phase 2a pipeline.
-2. **Scalar core only**: All measurements are on the RISC-V scalar core (float32). GeMM accelerator offload (INT8) is designed but not yet measured.
-3. **Small calibration model**: Verified cycle counts are for the GAP+FC toy model (4x4x16). Larger models use cost-model estimates.
+2. **Accelerator offload for Grad-CAM and linear-head SHAP only**: Grad-CAM (8.6× faster than scalar int8 at ResNet-8 size) and hoisted Gradient SHAP (3.9× at GAP+FC size) run bit-exact on the GeMMX accelerator. Non-linear-head SHAP, symbolic rules and inference still run on the scalar core, and GeMMX utilisation is <2% because each launch costs ~3,000 cycles of CSR configuration.
+3. **Small calibration model**: Verified cycle counts are for the GAP+FC toy model (4x4x16). Larger models use cost-model estimates, and inference cycles are uncalibrated for every model.
 4. **QVIP scalability**: ILP solving scales super-linearly with network size. For ResNet-8-scale networks, solver timeouts become practical.
 
 ---
@@ -761,16 +789,16 @@ Phase 3 demonstrated that high-saliency regions identified by Grad-CAM are more 
 
 ### 12.1 Near-Term (Phase 5 Completion)
 
-1. **Calibrate cycle cost model**: Tune `SnaxCostParams` so GAP+FC predictions match measurements within 15%
+1. ~~**Calibrate cycle cost model**~~: done — XAI methods within 0.2% of GAP+FC measurements. Remaining: calibrate inference by simulating a GeMM inference kernel
 2. **Complete integration tests**: Run all phases on all 4 benchmark models end-to-end
 3. **Generate comparison figures**: Saliency maps, cycle breakdown charts, overhead bar graphs
 
 ### 12.2 Medium-Term
 
-4. **INT8 GeMM offload**: Offload Grad-CAM backward GeMM and SHAP forward passes to the SNAX accelerator
+4. **INT8 GeMM offload**: Grad-CAM done (§4.6); next: amortise the ~3,000-cycle launch cost (batch classes/images per launch, overlap configuration with execution) and offload SHAP
 5. **Multi-core SHAP**: Distribute N samples across 8 Snitch cores (expected ~20x speedup)
 6. **CFU Playground port**: Map the 91.6% accumulation bottleneck to custom FPGA SIMD instructions
-7. **Normalization optimization**: Fixed-point reciprocal approximation to eliminate fdiv.s bottleneck
+7. **SSR/frep streaming for the scalar loops**: all Grad-CAM/SHAP stages cost ~7–8 cycles per element; streaming loads and hardware loops attack that directly (normalization is only 7%, so the earlier fdiv focus was misplaced)
 
 ### 12.3 Long-Term
 
@@ -785,9 +813,9 @@ Phase 3 demonstrated that high-saliency regions identified by Grad-CAM are more 
 1. Selvaraju, R.R. et al. "Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization." ICCV 2017.
 2. Lundberg, S.M. and Lee, S.I. "A Unified Approach to Interpreting Model Predictions." NeurIPS 2017.
 3. Zhang, Z. et al. "QVIP: An ILP-based Formal Verification Approach for Quantized Neural Networks." ASE 2022.
-4. Guillard, B. et al. "ECQx: Explainability-Driven Quantization for Low-Bit and Sparse DNNs." arXiv:2109.04236.
+4. Becking, D., Dreyer, M., Samek, W., Müller, K., Lapuschkin, S. "ECQx: Explainability-Driven Quantization for Low-Bit and Sparse DNNs." arXiv:2109.04236, 2022.
 5. Pan, Z. and Mishra, P. "Hardware Acceleration of Explainable Artificial Intelligence." arXiv:2305.04887, 2023.
-6. Paulin, G. et al. "SNAX: A Heterogeneous Cluster for Flexible Hardware Acceleration." (HW-SW co-design paper)
+6. Antonio, R.A., Dumoulin, J., Yi, X., Van Delm, J., Deng, Y., Paim, G., Verhelst, M. "An Open-Source HW-SW Co-Development Framework Enabling Efficient Multi-Accelerator Systems." arXiv:2508.14582, 2025.
 7. Burrello, A. et al. "DORY: Automatic HW-aware DNN Deployment for Embedded Targets." IEEE Trans. Computers, 2021.
 8. Cai, J. et al. "CFU Playground: Full-Stack Open-Source Framework for Tiny Machine Learning." arXiv:2201.01863.
 9. Bastani, O. et al. "Interpretability via Model Extraction." NeurIPS 2017 Workshop.

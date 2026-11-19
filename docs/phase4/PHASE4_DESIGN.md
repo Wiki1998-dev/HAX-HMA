@@ -27,7 +27,7 @@ tree is allowed to split on. The result is:
 
 | Phase | Method | Question Answered |
 |-------|--------|-------------------|
-| Phase 1 | Grad-CAM (6,153 cyc) | **WHERE** is the model looking? |
+| Phase 1 | Grad-CAM (4,757 cyc) | **WHERE** is the model looking? |
 | Phase 2 | SHAP (58,022 cyc) | **WHY** does each feature matter? |
 | Phase 3 | QVIP verification (33 tests) | Is the INT8 model **SAFE**? |
 | Phase 4 | Rule extraction (33 tests) | **WHAT** rules can we extract? |
@@ -250,7 +250,7 @@ For the `inline` style with a depth-3 tree:
 
 For SNAX RV32IMF:
 - Each comparison is one `slti` or `slt` + `beq`/`bne`
-- Expected cycle count: **~15–25 cycles** (vs 6,153 for Grad-CAM or
+- Measured cycle count: **47 cycles** on SNAX (initial estimate was ~15–25) (vs 4,757 for Grad-CAM or
   58,022 for optimized SHAP)
 - Roughly **300–400× cheaper** than Grad-CAM for the prediction step alone
 

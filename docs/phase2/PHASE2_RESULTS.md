@@ -40,7 +40,7 @@
 
 ### Analysis
 
-**No single bottleneck** — unlike Grad-CAM where fdiv dominated (68.8%),
+**No single bottleneck** — like Grad-CAM (where the earlier 68.8% fdiv claim was an estimate later disproved by the counters),
 SHAP cost is distributed across all stages. The two most expensive stages
 (accumulate + interpolate = 58.1%) are both 256-element loops doing
 2 loads + 1-2 FP ops + 1 store per element.
@@ -61,9 +61,9 @@ with serial FP dependencies and fdiv.s instructions (~25 cycles each).
 
 | Metric | Grad-CAM | SHAP (N=16) | Ratio |
 |--------|----------|-------------|-------|
-| Total cycles | 6,153 | 175,510 | 28.5x |
+| Total cycles | 4,757 (6,153 before OOB fix) | 175,510 | 36.9x |
 | BIST errors | 0/16 | 0/256 | — |
-| Dominant cost | fdiv in normalize (68.8%) | accumulate loops (30.3%) | — |
+| Dominant cost | weighted sum (42.5%) | accumulate loops (30.3%) | — |
 | Elements | 16 (6×6 spatial, no channel) | 256 (4×4×16) | 16x |
 | Per-element | 384 cyc/elem | 686 cyc/elem | 1.78x |
 | Acceleratable portion | 29% (gemm+wsum) | 40.2% (fwd+bwd) | — |
