@@ -80,6 +80,12 @@ def emit_header(**kwargs):
     feature_maps = np.random.rand(h, w, K).astype(np.float32)
     w_fc = np.random.rand(K, C).astype(np.float32)
 
+    # INT8 quantization of w_fc for GEMM_I8 path
+    wfc_scale = float(np.max(np.abs(w_fc))) / 127.0
+    if wfc_scale == 0.0:
+        wfc_scale = 1.0
+    w_fc_i8 = np.clip(np.round(w_fc / wfc_scale), -128, 127).astype(np.int8)
+
     # One-hot d_logit
     d_logit = np.zeros(C, dtype=np.float32)
     d_logit[target_class] = 1.0
@@ -101,6 +107,11 @@ def emit_header(**kwargs):
                                           section=section)]
     data_str += [format_vector_definition('float', 'w_fc',
                                           w_fc.flatten(),
+                                          alignment=BURST_ALIGNMENT,
+                                          section=section)]
+    data_str += [format_scalar_definition('float', 'WFC_SCALE', wfc_scale)]
+    data_str += [format_vector_definition('int8_t', 'w_fc_i8',
+                                          w_fc_i8.flatten(),
                                           alignment=BURST_ALIGNMENT,
                                           section=section)]
     data_str += [format_vector_definition('float', 'd_logit',
