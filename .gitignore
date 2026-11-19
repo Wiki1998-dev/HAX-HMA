@@ -42,11 +42,6 @@ Thumbs.db
 *.bak
 *.orig
 
-# Legacy context files (superseded by CLAUDE.md)
-CFU_Playground_CLAUDE.md
-snax_cluster_CLAUDE.md
-src_xai_CLAUDE.md
-setup_claude_context.sh
 # Root-level copies (actual files are in src/ and tests/)
 /gradcam_reference.py
 /test_gradcam_reference.py
@@ -59,3 +54,18 @@ setup_claude_context.sh
 
 # Browser partial downloads
 *.crdownload
+
+# Local AI-assistant / editor configuration (kept on disk, not versioned)
+.claude/
+.gemini/
+.cursorrules
+.windsurfrules
+.opencode.json
+.mcp.json
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+*_CLAUDE.md
+setup_claude_context.sh
+docs/superpowers/
+graphify-out/
