@@ -5,6 +5,7 @@
 
 // Grad-CAM test harness for SNAX cluster.
 // DMA in feature maps + FC weights, compute saliency map, DMA out result.
+// Build with GEMM_I8=1 (adds -DGEMM_I8) to use the INT8-weight backward GeMM.
 
 #include <math.h>
 #include <stdint.h>
@@ -22,6 +23,9 @@ int main() {
     uint32_t grad_size = K_CH * sizeof(float);
     uint32_t alpha_size = K_CH * sizeof(float);
     uint32_t cam_size = H * W * sizeof(float);
+#ifdef GEMM_I8
+    uint32_t wfc_i8_size = K_CH * N_CLASSES * sizeof(int8_t);
+#endif
 
     // Allocate L1 SPM buffers
     void *ptr = (void *)snrt_l1_next();
@@ -38,12 +42,19 @@ int main() {
     float *local_alpha = ptr;
     ptr += alpha_size;
     float *local_cam = ptr;
+    ptr += cam_size;
+#ifdef GEMM_I8
+    int8_t *local_wfc_i8 = ptr;
+#endif
 
     // DMA in: feature maps, FC weights, one-hot d_logit
     if (snrt_is_dm_core()) {
         snrt_dma_start_1d(local_fmaps, feature_maps, fmaps_size);
         snrt_dma_start_1d(local_wfc, w_fc, wfc_size);
         snrt_dma_start_1d(local_dlogit, d_logit, dlogit_size);
+#ifdef GEMM_I8
+        snrt_dma_start_1d(local_wfc_i8, w_fc_i8, wfc_i8_size);
+#endif
         snrt_dma_wait_all();
     }
 
@@ -59,12 +70,20 @@ int main() {
 
         // Step 1: backward GeMM — grad[K] = d_logit[C] @ W_fc_T[C×K]
         t1 = snrt_mcycle();
+#ifdef GEMM_I8
+        gradcam_backward_gemm_i8(local_dlogit, local_wfc_i8, local_grad,
+                                 N_CLASSES, K_CH, WFC_SCALE);
+#else
         gradcam_backward_gemm(local_dlogit, local_wfc_t, local_grad,
                               N_CLASSES, K_CH);
+#endif
 
         // Step 2: global average pool → alpha[K]
+        // For GAP+FC the gradient is spatially uniform, so grad holds a
+        // single (1x1, K) position. Passing H, W here read H*W*K floats from
+        // a K-element buffer (out of bounds; passed only because L1 was zero).
         t2 = snrt_mcycle();
-        gradcam_gap_weights(local_grad, local_alpha, H, W, K_CH);
+        gradcam_gap_weights(local_grad, local_alpha, 1, 1, K_CH);
 
         // Step 3: weighted sum → cam[H×W]
         t3 = snrt_mcycle();
@@ -75,6 +94,9 @@ int main() {
         gradcam_relu_normalize(local_cam, H, W);
 
         uint32_t t_end = snrt_mcycle();
+#ifdef GEMM_I8
+        printf("[INT8] ");
+#endif
         printf("Cycles: transpose=%u gemm=%u gap=%u wsum=%u relu=%u total=%u\n",
                t1 - t0, t2 - t1, t3 - t2, t4 - t3, t_end - t4, t_end - t0);
     }
@@ -90,11 +112,16 @@ int main() {
     snrt_cluster_hw_barrier();
 
 #ifdef BIST
+#ifdef GEMM_I8
+#define BIST_TOL 1e-2f  // INT8 weight quantization error
+#else
+#define BIST_TOL 1e-3f
+#endif
     // Verify against golden reference
     if (snrt_cluster_core_idx() == 0) {
         uint32_t errors = 0;
         for (uint32_t i = 0; i < H * W; i++) {
-            if (fabsf(local_cam[i] - cam_golden[i]) > 1e-3f) {
+            if (fabsf(local_cam[i] - cam_golden[i]) > BIST_TOL) {
                 printf("MISMATCH cam[%u]: got %f expected %f\n", i,
                        local_cam[i], cam_golden[i]);
                 errors++;

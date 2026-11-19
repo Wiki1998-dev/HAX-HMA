@@ -27,3 +27,10 @@ clean-data:
 	rm -f $(DATA_H)
 
 clean: clean-data
+
+# INT8-weight backward GeMM variant (builds build/gradcam_i8.elf):
+#   make -C target/snitch_cluster/sw/apps/xai/gradcam GEMM_I8=1 all
+ifeq ($(GEMM_I8),1)
+APP := gradcam_i8
+RISCV_CFLAGS += -DGEMM_I8
+endif
