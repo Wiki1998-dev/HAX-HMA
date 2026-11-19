@@ -90,9 +90,9 @@ Clock cycles in the simulator. At 100 MHz, 1 million cycles = 10 ms.
 
 | Target | Result |
 |---|---|
-| **1. Overhead < 20%** | ✅ **Met by Grad-CAM** (+7.2%).<br>❌ **Not met by IG / SHAP** (10× to 112×). They need 16 full forward + backward passes, so they cannot fit in 20%.<br>IG / SHAP may still be practical where time allows: for the audio detector, a full explanation uses about 3% of the real-time budget. |
-| **2. Utilisation > 90%** | ❌ **Not met.** The accelerator is busy 55–67% of the time during inference and 21–26% during IG / SHAP.<br>The main bottleneck is no longer the accelerator but work it cannot do: applying the ReLU "on/off" masks in the backward pass runs on the small processors and takes about half the time. |
-| **3. Faithful 8-bit explanations** | ✅ **Grad-CAM: near perfect** (r = 0.997).<br>✅ **Image model IG / SHAP: good** (r = 0.92–0.95).<br>⚠️ **Audio model: weaker** (r ≈ 0.7). Its 10 stacked fully-connected layers lose precision at each 8-bit backward step. |
+| **1. Overhead < 20%** | **Met by Grad-CAM** (+7.2%).<br> **Not met by IG / SHAP** (10× to 112×). They need 16 full forward + backward passes, so they cannot fit in 20%.<br>IG / SHAP may still be practical where time allows: for the audio detector, a full explanation uses about 3% of the real-time budget. |
+| **2. Utilisation > 90%** |  **Not met.** The accelerator is busy 55–67% of the time during inference and 21–26% during IG / SHAP.<br>The main bottleneck is no longer the accelerator but work it cannot do: applying the ReLU "on/off" masks in the backward pass runs on the small processors and takes about half the time. |
+| **3. Faithful 8-bit explanations** |  **Grad-CAM: near perfect** (r = 0.997).<br>**Image model IG / SHAP: good** (r = 0.92–0.95).<br> **Audio model: weaker** (r ≈ 0.7). Its 10 stacked fully-connected layers lose precision at each 8-bit backward step. |
 
 **Takeaways:**
 1. Cheap explanations like Grad-CAM can run on a tiny accelerator almost for free.
