@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-19: ToyAdmos inference + IG + Gradient SHAP on GeMMX (real model and data)
+
+### Added
+- `snax_cluster/sw/xai/toyadmos_gemmx/`: a GeMMX launch-schedule generator with a bit-exact
+  emulator, a generic launch-table executor, and the MLPerf `ad01_int8` model in GeMMX
+  integer semantics.
+- Real DCASE 2020 ToyCar data: GeMMX AUC 0.8406 vs TFLite 0.8416.
+- Measured, bit-exact:
+  - inference 47,189 cycles;
+  - Integrated Gradients and Gradient SHAP 181,188 cycles each (3.84× inference,
+    41 launches, weights streamed from L3).
+- int8 attribution vs float32 (100 windows): Pearson r 0.73 (IG), 0.70 (SHAP).
+- `scripts/toyadmos_data.py`, `scripts/toyadmos_xai_fidelity.py`;
+  `docs/gemmx/TOYADMOS_XAI_GEMMX.md`.
+
 ## 2026-11-19: ResNet-8 inference measured on GeMMX
 
 ### Added
