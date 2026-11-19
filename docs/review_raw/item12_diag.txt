@@ -1,0 +1,7 @@
+ToyAdmos IG, 100 windows: float32 backward with pieces of the int8 forward swapped in, r vs float32 IG
+  float: mean 1.0000  min 1.0000  95% CI [1.0000, 1.0000]  (n=100)
+  int8 masks: mean 0.6333  min -0.9055  95% CI [0.5468, 0.7127]  (n=100)
+  int8 y: mean 0.7222  min -0.9616  95% CI [0.6261, 0.8076]  (n=100)
+  int8 x~: mean 0.6428  min -0.4736  95% CI [0.5624, 0.7173]  (n=100)
+  int8 masks + y + x~: mean 0.5842  min -0.8051  95% CI [0.4929, 0.6709]  (n=100)
+  int8 pipeline: mean 0.7315  min -0.2635  95% CI [0.6684, 0.7919]  (n=100)

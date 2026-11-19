@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-11-19: Reviewer experiments
+
+### Added
+- `docs/REVIEW_EXPERIMENTS.md`: the 15 reviewer items, each with command, seeds and raw output
+  (`docs/review_raw/`), plus a summary table.
+  Harness `scripts/review_experiments.py`; ToyAdmos forward-vs-backward diagnosis `scripts/review_ta_diag.py`.
+- ToyAdmos 8-sample IG / SHAP programs (`PROG=toyadmos_ig_n8|toyadmos_shap_n8`).
+  Measured: 60,689 cycles, 66% of N=16. The 16-sample output is byte-identical.
+
+### Found
+- ResNet-8 on all 10,000 CIFAR-10 test images: GeMMX 0.8704 vs TFLite 0.8702.
+- ToyAdmos SHAP r is 0.707 with the current code (docs said 0.700).
+- ResNet-8 inference launches 13.77M MACs.
+- ToyAdmos attribution error comes from the int8 forward pass; int16 gradients do not help.
+
+## 2026-11-19: Keyword spotting and visual wake words on GeMMX
+
+### Added
+- `snax_cluster/sw/xai/mobile_gemmx/`: MLPerf Tiny DS-CNN (KWS) and MobileNetV1 (VWW) inference + fused
+  Grad-CAM, bit-exact in Verilator.
+  - KWS: 48,024 + 5,787 cycles (+12.0%).
+  - VWW: 188,250 + 1,538 cycles (+0.8%).
+  - Depthwise convs run as diagonal-block conv launches.
+- `scripts/kws_vww_data.py` (Speech Commands MFCC in NumPy, COCO vww01 images), `scripts/tflite_eval.py`,
+  `scripts/mobile_gradcam_fidelity.py`.
+- Accuracy: KWS 0.9180 (TFLite 0.9180), VWW 0.848 (TFLite 0.850).
+- Grad-CAM r vs float32: 0.994 / 0.997.
+
 ## 2026-11-19: ResNet-8 input-level Integrated Gradients and Gradient SHAP on GeMMX
 
 ### Added

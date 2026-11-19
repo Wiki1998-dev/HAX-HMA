@@ -1,0 +1,5 @@
+cached 200 images -> external/review/r8_200.npz
+
+real	21m18,924s
+user	31m44,732s
+sys	0m20,100s

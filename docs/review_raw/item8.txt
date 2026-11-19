@@ -1,0 +1,2 @@
+ResNet-8 Grad-CAM on the block-2 output (16x16x32), int8 backward through block 3 vs float32, 200 images
+  Pearson r: mean 0.9838  min 0.9013  95% CI [0.9821, 0.9853]  (n=200)

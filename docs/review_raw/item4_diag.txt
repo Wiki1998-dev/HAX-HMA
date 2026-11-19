@@ -1,0 +1,6 @@
+ResNet-8 IG completeness diagnostics (float32, 200 images, black baseline)
+  |f(x)-f(b)|: median 3.566, 10th pct 0.579, min 0.0038
+  f(x)-f(b) < 0 (logit of the predicted class lower on x than on black): 42 images
+  images with relative error > 1: 38; their median |f(x)-f(b)| 0.566 vs 4.394 for the rest
+  absolute error |sum - delta f|: median 0.996, 90th pct 2.498 (logit units)
+  sum(attr) / (f(x)-f(b)): median 1.070

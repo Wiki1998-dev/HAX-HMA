@@ -1,0 +1,11 @@
+ResNet-8 IG, one explanation (16 samples), bytes moved per category (schedule generator; each sample runs the same step table)
+  weights          L3<->TCDM   per sample    177,664 B   per explanation    2,842,624 B
+  spill_write      L3<->TCDM   per sample    145,920 B   per explanation    2,334,720 B
+  mask_read        L3<->TCDM   per sample     73,728 B   per explanation    1,179,648 B
+  sample_in        L3<->TCDM   per sample     26,240 B   per explanation      419,840 B
+  attr_in          L3<->TCDM   per sample     26,112 B   per explanation      417,792 B
+  interleave_tcdm  TCDM->TCDM  per sample     30,720 B   per explanation      491,520 B
+  fill_tcdm        TCDM->TCDM  per sample    334,080 B   per explanation    5,345,280 B
+  total L3<->TCDM per explanation: 7,194,624 B (+ one-time TCDM image 120,448 B)
+ToyAdmos IG, one explanation (16 samples stacked in the mesh rows): weight / bias tiles streamed L3->TCDM 581,888 B; inputs x, b_1..b_16 and constants arrive with the TCDM image (109,696 B); masks, interleaves and gradients stay in the TCDM (no spills).
+DMA busy / stall counters: the simulated cluster exposes no DMA performance counters to software and the runs record no per-cycle trace (traces were linked to /dev/null for disk space), so the fraction of time the cores wait on DMA is not measured. The phase timers count DMA-bound phases together with the core work that overlaps them (see item 14 text).

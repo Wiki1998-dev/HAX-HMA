@@ -1,0 +1,9 @@
+ResNet-8 IG completeness, 200 images, black baseline, 16-step Riemann sum (right endpoints alpha = 1/16..1), f = logit of the predicted class
+  float32: |sum(attr) - (f(x)-f(b))| / |f(x)-f(b)|: median 0.2759, 90th pct 2.5094
+  int8 pipeline vs int8 model's own logits: median 0.4149, 90th pct 2.5982
+  int8 pipeline vs float32 f(x)-f(b): median 0.4411, 90th pct 2.5772
+ToyAdmos IG completeness, 100 windows (item 2 windows), baseline = mean normal spectrum, f = reconstruction MSE; int8 attribution in real units via K = 2 s_x (2/640) S_gy / (m1 N) = 1.054e-08
+  check of K: sum(int8 attr in real units) / sum(float32 attr), median 0.944 (1 = same total)
+  float32: median 0.0911, 90th pct 0.6955
+  int8 pipeline vs int8 model's own f: median 0.0437, 90th pct 0.1164
+  int8 pipeline vs float32 f: median 0.0461, 90th pct 0.1261

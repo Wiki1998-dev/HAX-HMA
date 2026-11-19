@@ -1,0 +1,11 @@
+$ python scripts/resnet8_gradcam_fidelity.py
+ResNet-8, 200 MLPerf CIFAR-10 samples: top-1 GeMMX-int 0.870, dequantised float 0.870
+Grad-CAM int8 GeMMX vs float32 (predicted class, 200 maps): Pearson r 0.997 (min 0.989), top-1 cell 0.945, top-8 overlap 0.952
+$ python scripts/toyadmos_xai_fidelity.py --clips 50
+ToyAdmos int8 GeMMX attribution vs float32 (dequantised model), 100 windows (50 anomalous + 50 normal clips)
+  ig  : pearson 0.731 (min -0.264)  spearman 0.678 (min -0.333)  topk 0.675 (min 0.094)  sign 0.909 (min 0.125)
+  shap: pearson 0.707 (min -0.342)  spearman 0.669 (min -0.342)  topk 0.607 (min 0.062)  sign 0.872 (min 0.219)
+$ python scripts/resnet8_xai_fidelity.py --images 200
+ResNet-8 int8 GeMMX-semantics attribution vs float32, 200 images (calibration percentile 99.5)
+  ig  : map pearson 0.944 (min 0.852)  spearman 0.936  top-64 overlap 0.762  full pearson 0.947
+  shap: map pearson 0.913 (min 0.835)  spearman 0.895  top-64 overlap 0.696  full pearson 0.915

@@ -1,0 +1,9 @@
+MACs from the schedule generators (sum over launches of M x N x K blocks x 512); cycles = measured Verilator totals
+program                            launches  launched MACs  useful MACs useful/launched     cycles launched util useful util
+ToyAdmos inference                       18      2,113,536      264,192           0.125      9,227         0.447       0.056
+ToyAdmos IG/SHAP (N=16)                  41      9,273,344    8,454,144           0.912     91,517         0.198       0.180
+ResNet-8 inference + Grad-CAM            48     13,770,752   12,505,728           0.908     57,461         0.468       0.425
+ResNet-8 IG/SHAP (N=16)                1584    444,727,296  400,052,224           0.900  6,027,558         0.144       0.130
+KWS inference + Grad-CAM                 75      9,060,352    2,664,768           0.294     53,811         0.329       0.097
+VWW inference + Grad-CAM                346     18,325,504    7,491,968           0.409    189,788         0.189       0.077
+useful MACs: ToyAdmos sum(in x out) = 264192 per row; ResNet-8 conv + FC (+ Grad-CAM 64x64) = 12501632; XAI = 16 x (forward + backward) GeMM MACs

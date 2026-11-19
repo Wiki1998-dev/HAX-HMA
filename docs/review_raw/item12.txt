@@ -1,0 +1,13 @@
+ToyAdmos gradient precision (emulator), 100 windows (item 2), r vs float32; masks and forward int8 as built; int16 = the int8 scale with 8 extra fractional bits, saturating at +-32767
+  int8 everywhere (as built)                : ig 0.7315 [0.6684, 0.7919] (min -0.264)  shap 0.7072 [0.6428, 0.7695] (min -0.342)
+  int16 all stages                          : ig 0.7352 [0.6723, 0.7950] (min -0.264)  shap 0.7079 [0.6435, 0.7701] (min -0.340)
+  float all stages                          : ig 0.5844 [0.4931, 0.6711] (min -0.801)  shap 0.5861 [0.5073, 0.6614] (min -0.735)
+  int16 output-side 3 (loss, bwd10, bwd9)   : ig 0.7319 [0.6687, 0.7925] (min -0.261)  shap 0.7075 [0.6430, 0.7697] (min -0.341)
+  int16 input-side 3 (bwd3, bwd2, bwd1)     : ig 0.7326 [0.6694, 0.7932] (min -0.268)  shap 0.7075 [0.6431, 0.7699] (min -0.339)
+  float output-side 3 (loss, bwd10, bwd9)   : ig 0.7359 [0.6727, 0.7970] (min -0.246)  shap 0.7129 [0.6488, 0.7753] (min -0.333)
+  float input-side 3 (bwd3, bwd2, bwd1)     : ig 0.6020 [0.5139, 0.6841] (min -0.809)  shap 0.6000 [0.5271, 0.6709] (min -0.457)
+  backward GeMM launches in the built schedule: 18 (per explanation)
+
+real	1m12,672s
+user	1m15,347s
+sys	0m34,191s

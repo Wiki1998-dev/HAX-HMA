@@ -1,0 +1,9 @@
+Cheap methods vs float32 IG. ResNet-8 50 images (gradient x input = one sample at x, black baseline)
+  int8 grad x input vs float32 IG N=16: mean 0.6775  min 0.5344  95% CI [0.6613, 0.6936]  (n=50)
+  int8 grad x input vs float32 IG N=128: mean 0.6651  min 0.5143  95% CI [0.6480, 0.6818]  (n=50)
+  float32 grad x input vs float32 IG N=16 (method gap alone): mean 0.7165  min 0.5602  95% CI [0.7005, 0.7318]  (n=50)
+  int8 vs float32 grad x input (int8 gap alone): mean 0.8966  min 0.8234  95% CI [0.8881, 0.9047]  (n=50)
+ToyAdmos, 100 windows: per-feature reconstruction error (x - y)^2 of the int8 inference
+  (x - y)^2 vs float32 IG N=16 (signed): mean 0.6139  min -0.0301  95% CI [0.5554, 0.6703]  (n=100)
+  (x - y)^2 vs |float32 IG N=16|: mean 0.6647  min 0.0459  95% CI [0.6184, 0.7089]  (n=100)
+  for comparison: int8 IG N=16 vs float32 IG N=16: mean 0.7315  min -0.2635  95% CI [0.6684, 0.7919]  (n=100)

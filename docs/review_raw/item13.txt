@@ -1,0 +1,10 @@
+ResNet-8 deletion / insertion AUC, 200 images, float32 dequantised model, softmax probability of the predicted class; pixels ranked by the channel-summed attribution (descending), 32 steps of 32 pixels; deletion fills black, insertion starts from a Gaussian blur (sigma 4); random map seed rng(900 + k). Lower deletion / higher insertion is better.
+  ig_int   : deletion 0.1419 [0.1104, 0.1774]   insertion 0.3048 [0.2705, 0.3396]
+  ig_flt   : deletion 0.1405 [0.1100, 0.1748]   insertion 0.2955 [0.2613, 0.3305]
+  shap_int : deletion 0.1628 [0.1284, 0.2002]   insertion 0.3434 [0.3060, 0.3825]
+  shap_flt : deletion 0.1604 [0.1264, 0.1976]   insertion 0.3401 [0.3027, 0.3784]
+  random   : deletion 0.1573 [0.1224, 0.1954]   insertion 0.2799 [0.2480, 0.3136]
+  ig int8 - float32 (del): +0.0014 95% CI [-0.0037, +0.0070]
+  ig int8 - float32 (ins): +0.0093 95% CI [+0.0032, +0.0155]
+  shap int8 - float32 (del): +0.0024 95% CI [-0.0053, +0.0113]
+  shap int8 - float32 (ins): +0.0032 95% CI [-0.0051, +0.0114]

@@ -1,0 +1,10 @@
+ResNet-8: fraction of forward activations at +127 / at -128 (zero point), per masked tensor, mean over 200 images x 16 interpolated samples
+  ig: conv1 0.000%/26.8%  b1c1 0.000%/38.0%  add1 0.000%/25.4%  b2c1 0.000%/48.9%  add2 0.000%/43.8%  b3c1 0.000%/73.4%  add3 0.000%/73.2%
+  shap: conv1 0.000%/36.8%  b1c1 0.000%/43.7%  add1 0.000%/30.2%  b2c1 0.000%/49.1%  add2 0.000%/46.6%  b3c1 0.000%/72.2%  add3 0.000%/69.8%
+  ig: map r with +127 also masked 0.9444 vs 0.9444 now; paired diff +0.00000 95% CI [+0.00000, +0.00000]; images changed 0
+  shap: map r with +127 also masked 0.9126 vs 0.9126 now; paired diff +0.00000 95% CI [-0.00000, +0.00000]; images changed 3
+ToyAdmos: fraction of hidden-layer outputs (ReLU layers 1-9) at +127, 100 windows x 16 samples
+  ig: L1 0.000%  L2 0.000%  L3 0.000%  L4 0.000%  L5 0.000%  L6 0.000%  L7 0.000%  L8 0.000%  L9 0.000%
+  shap: L1 0.000%  L2 0.000%  L3 0.000%  L4 0.000%  L5 0.000%  L6 0.000%  L7 0.000%  L8 0.000%  L9 0.000%
+  ig: r with +127 masked 0.7315 vs 0.7315; paired diff +0.00000 95% CI [+0.00000, +0.00000]; windows changed 0
+  shap: r with +127 masked 0.7072 vs 0.7072; paired diff +0.00000 95% CI [+0.00000, +0.00000]; windows changed 0

@@ -1,0 +1,4 @@
+ResNet-8 IG: 1-bit ReLU masks instead of re-reading int8 activations (per sample)
+  masked gradient elements per sample: 73,728; int8 activation bytes read from L3 now: 73,728 B; activation bytes spilled to L3 now: 145,920 B
+  as 1-bit masks: 9,216 B per sample (saves 64,512 B of mask reads and replaces 145,920 B of spills with 9,216 B)
+  TCDM in use by the schedule: 120,448 B image of 124,928 B limit

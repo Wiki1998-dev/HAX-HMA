@@ -1,0 +1,29 @@
+Item 7: data-dependent branches in the core-side loops
+Sources: snax_cluster/sw/xai/resnet8_gemmx/src/resnet8_xai_run.c, snax_cluster/sw/xai/toyadmos_gemmx/src/toyadmos_run.c,
+snax_cluster/sw/xai/resnet8_gemmx/src/resnet8_run.c, snax_cluster/sw/xai/mobile_gemmx/src/mobile_run.c
+Binary checked: target/snitch_cluster/sw/apps/xai/resnet8_gemmx/build/resnet8_shap_n16_s1.dump (clang -O3, rv32ima; functions inlined into main)
+
+ReLU mask, relu_mask() (both apps): SWAR, 2 x 32-bit words per iteration (ResNet-8) / 1 word (ToyAdmos):
+  t = (((v & 0x7F7F7F7F) + 0x7F7F7F7F) | v) & 0x80808080 with v = a ^ 0x80808080; g &= (t << 1) - (t >> 7)
+  Loop bound n is a constant from the step table (row width), not data. Disassembly of the inlined loop
+  (0x80003b54-0x80003bc0): lw/not/and/add/or/slli/srli/sub/sw only; the single branch is the loop back-edge
+  "bltu a5, s2" (counter vs bound). Outer row/chunk loops: "bne a1, a0" (counter vs bound).
+Attribution MAC, attr_mac() (ResNet-8): fixed 32 x 32 x 3 loop, acc += (x - b) * g. Disassembly (0x80003c98-0x80003d34):
+  lb/lw/sub/mul/add/sw, branches "bne t5, t1" (pointer vs end) and "bne a3, t1" with t1 = 16 (row counter): none data-dependent.
+  mul on this core is fixed-latency; there is no division in these loops.
+ToyAdmos diag_gather() and combine(): fixed 80 x 8 and 640 iterations, no conditionals (source).
+Polyphase interleave / scatter: not a core loop. The DMA core issues 2-D DMA descriptors from the static table prog_dmas
+  (op->a .. op->b range fixed at generation time); sizes and addresses do not depend on data.
+Step dispatch: branches on the step table (op type, launch index, prefetch index): static per program, identical for
+  every input and every sample.
+
+Data-dependent branches that do exist (outside the loops above):
+  - argmax over the logits to pick the explained class (ResNet-8 gpool op, ToyAdmos none, KWS/VWW op_alpha): 10 / 12 / 2
+    comparisons once per explanation; the chosen class changes which FC row is copied, not the amount of work.
+  - Grad-CAM finish (resnet8_run.c, mobile_run.c op_cam): ReLU "v < 0 ? 0 : v", running max "if (v > mx)", and one
+    32-bit division (1 << 31) / mx, whose latency on the iterative divider may depend on the operand; once per map
+    (64 / 125 / 9 pixels).
+  - BIST result comparison after the timed region (not timed).
+Conclusion: the ReLU mask, attribution MAC and interleave have no data-dependent branches; cycle counts of IG / SHAP
+are input-independent except for the argmax (a few compares). This matches the measurements: IG and SHAP give
+identical totals (6,027,558 and 6,027,558; 91,517 and 91,517; N=8: 60,689 and 60,689) on different data.

@@ -1,0 +1,79 @@
+# Verilator runs for item 9 (simulator: snitch_cluster.vlt, snax_KUL_cluster; per-hart traces linked to /dev/null)
+## ToyAdmos IG, N=8 (PROG=toyadmos_ig_n8)
+[DMA] x placement + first tile: 536 cycles
+[TOTAL] 60689 cycles, 42 steps: config=4954 run=12423 mask=20255 gather+combine=18737
+  interp    902
+  forward   7114
+  loss      782
+  backward  27452
+  attr      20119
+check a1      OK (0/1024 bytes differ)
+check a2      OK (0/1024 bytes differ)
+check a3      OK (0/1024 bytes differ)
+check a4      OK (0/1024 bytes differ)
+check a5      OK (0/64 bytes differ)
+check a6      OK (0/1024 bytes differ)
+check a7      OK (0/1024 bytes differ)
+check a8      OK (0/1024 bytes differ)
+check a9      OK (0/1024 bytes differ)
+check y_inf   OK (0/640 bytes differ)
+check D       OK (0/5120 bytes differ)
+check attr_gy OK (0/2560 bytes differ)
+check g0      OK (0/5120 bytes differ)
+check attr    OK (0/2560 bytes differ)
+rc=0
+## ToyAdmos SHAP, N=8 (PROG=toyadmos_shap_n8)
+[DMA] x placement + first tile: 536 cycles
+[TOTAL] 60689 cycles, 42 steps: config=4954 run=12423 mask=20255 gather+combine=18737
+  interp    902
+  forward   7114
+  loss      782
+  backward  27452
+  attr      20119
+check a1      OK (0/1024 bytes differ)
+check a2      OK (0/1024 bytes differ)
+check a3      OK (0/1024 bytes differ)
+check a4      OK (0/1024 bytes differ)
+check a5      OK (0/64 bytes differ)
+check a6      OK (0/1024 bytes differ)
+check a7      OK (0/1024 bytes differ)
+check a8      OK (0/1024 bytes differ)
+check a9      OK (0/1024 bytes differ)
+check y_inf   OK (0/640 bytes differ)
+check D       OK (0/5120 bytes differ)
+check attr_gy OK (0/2560 bytes differ)
+check g0      OK (0/5120 bytes differ)
+check attr    OK (0/2560 bytes differ)
+rc=0
+## ResNet-8 IG, N=4 (R8_METHOD=ig R8X_N=4 R8_SAMPLE=1)
+[TOTAL] 1507854 cycles, 4 samples x 115 steps: config=46747 run=318290 mask=716460 dma2d=131510 attr=150870, explained class 1
+  interp    7028
+  forward   190250
+  fill      51843
+  backward  1184819
+  sample 0: 378334  sample 1: 376624 cycles
+check attr   OK (0/12288 bytes differ)
+rc=0
+## KWS / VWW inference + Grad-CAM (MB_TASK=kws|vww MB_SAMPLE=0)
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:[TOTAL] 53811 cycles, 75 steps: config=9933 run=24364 dma-ops=4011 core-ops=5379, predicted class 0
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  input    1232
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  conv     9280
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  dw       13917
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  pw       12420
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  fill     2894
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  head     651
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:  gradcam  5787
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:check logits  OK (0/128 bytes differ)
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:check fmap    OK (0/21504 bytes differ)
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_kws/out.txt:check cam     OK (0/500 bytes differ)
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:[TOTAL] 189788 cycles, 346 steps: config=38834 run=65307 dma-ops=40923 core-ops=1237, predicted class 1
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  input    19128
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  conv     3758
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  dw       50810
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  pw       58692
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  fill     21873
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  head     716
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:  gradcam  1538
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:check logits  OK (0/64 bytes differ)
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:check fmap    OK (0/30720 bytes differ)
+/tmp/claude-1000/-home-wiki-xai-heterogeneous/4875fbcb-ad7d-4a27-aadf-aefdb1508a68/scratchpad/sim_vww/out.txt:check cam     OK (0/36 bytes differ)

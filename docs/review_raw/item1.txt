@@ -1,0 +1,10 @@
+ResNet-8 pretrainedResnet_quant, CIFAR-10 test set, 10000 images (no sampling, no seed)
+  TFLite int8 (argmax of the FC logits): top-1 0.8702 (8702/10000), 95% Wilson CI [0.8635, 0.8766]
+  TFLite int8 (argmax of the softmax output): top-1 0.8702 (8702/10000), 95% Wilson CI [0.8635, 0.8766]
+  GeMMX integer semantics (resnet8_int): top-1 0.8704 (8704/10000), 95% Wilson CI [0.8637, 0.8768]
+  predictions differing GeMMX vs TFLite logits: 187 / 10000; of these GeMMX right 77, TFLite right 75
+  predictions differing TFLite logits vs TFLite softmax argmax (int8 ties): 0
+
+real	4m10,026s
+user	7m22,554s
+sys	0m1,853s

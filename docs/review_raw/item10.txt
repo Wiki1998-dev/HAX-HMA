@@ -1,0 +1,8 @@
+IG faithfulness (int8 vs float32, same baseline, 16 steps). ResNet-8 50 images, ToyAdmos 100 windows
+  ResNet-8 baseline black: mean 0.9459  min 0.8744  95% CI [0.9400, 0.9513]  (n=50)
+  ResNet-8 baseline mean: mean 0.9500  min 0.8892  95% CI [0.9453, 0.9544]  (n=50)
+  ResNet-8 baseline blur: mean 0.9566  min 0.9192  95% CI [0.9528, 0.9602]  (n=50)
+  ToyAdmos baseline mean: mean 0.7315  min -0.2635  95% CI [0.6684, 0.7919]  (n=100)
+  ToyAdmos baseline zeros: mean 0.6210  min 0.2246  95% CI [0.5981, 0.6428]  (n=100)
+  ResNet-8 schedule identical for black / mean / blur baselines (launch CSR code, step table, DMA table): True
+  ToyAdmos schedule identical for mean / zeros baselines: True

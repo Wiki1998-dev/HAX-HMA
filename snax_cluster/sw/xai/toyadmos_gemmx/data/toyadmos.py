@@ -266,7 +266,8 @@ def calibrate(layers: List[A.Layer], bg: np.ndarray, rng: np.random.Generator) -
 
 def build_xai(layers: List[A.Layer], xq: np.ndarray, bq: np.ndarray, alpha: np.ndarray,
               sh: Dict[str, int]) -> Program:
-    R = N_SAMPLES
+    R = len(alpha)                                          # samples (mesh rows), <= 16
+    assert R % 8 == 0 and R <= 16
     al = Alloc()
     pb = (al.take(20480), al.take(20480))
     XB = Act(al.take(24 * 640), 24, 640)                    # [x; b_1..b_16; 0]
@@ -556,19 +557,21 @@ def select_input(layers: List[A.Layer], feats: dict) -> Tuple[np.ndarray, str]:
 
 
 def baselines(method: str, layers: List[A.Layer], bg: np.ndarray,
-              rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
-    """IG: 16 copies of the mean normal vector, alpha = 1..16 (/16).
-    SHAP: 16 random normal training vectors, alpha uniform in 0..16 (/16)."""
+              rng: np.random.Generator, n: int = N_SAMPLES) -> Tuple[np.ndarray, np.ndarray]:
+    """IG: n copies of the mean normal vector, alpha = 16/n, 2*16/n .. 16 (/16).
+    SHAP: n random normal training vectors, alpha uniform in 0..16 (/16)."""
     if method == "ig":
+        assert 16 % n == 0
         b = A.quantize_input(bg.mean(axis=0)[None], layers)
-        return np.repeat(b, N_SAMPLES, axis=0), np.arange(1, N_SAMPLES + 1)
-    idx = rng.choice(len(bg), N_SAMPLES, replace=False)
-    alpha = rng.integers(0, 17, size=N_SAMPLES)
+        return np.repeat(b, n, axis=0), np.arange(1, n + 1) * (16 // n)
+    idx = rng.choice(len(bg), n, replace=False)
+    alpha = rng.integers(0, 17, size=n)
     alpha[0] = 16          # one sample is x itself: its forward pass is the inference
     return A.quantize_input(bg[idx], layers), alpha
 
 
-def main(prog_name: str) -> None:
+def main(prog_name: str, n: int = N_SAMPLES) -> None:
+    """n: samples per explanation (8 or 16; calibration always uses 16)."""
     layers, feats, bg = load_data()
     xq, desc = select_input(layers, feats)
     if prog_name == "inference":
@@ -576,7 +579,7 @@ def main(prog_name: str) -> None:
     else:
         rng = np.random.default_rng(7)
         sh = calibrate(layers, bg, rng)
-        bq, alpha = baselines(prog_name, layers, bg, np.random.default_rng(11))
+        bq, alpha = baselines(prog_name, layers, bg, np.random.default_rng(11), n)
         prog = build_xai(layers, xq, bq, alpha, sh)
     prog.info["input"] = desc
     print(emit(prog, f"ToyAdmos {prog_name} on GeMMX (ad01_int8, DCASE 2020 ToyCar)"))
