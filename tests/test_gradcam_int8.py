@@ -1,7 +1,6 @@
 # tests/test_gradcam_int8.py
 import numpy as np
 import pytest
-from src.xai.gradcam.gradcam_reference import gradcam
 
 
 def _quantize_symmetric(w: np.ndarray) -> tuple[np.ndarray, float]:
@@ -11,10 +10,6 @@ def _quantize_symmetric(w: np.ndarray) -> tuple[np.ndarray, float]:
         scale = 1.0
     w_i8 = np.clip(np.round(w / scale), -128, 127).astype(np.int8)
     return w_i8, scale
-
-
-def _dequantize(w_i8: np.ndarray, scale: float) -> np.ndarray:
-    return w_i8.astype(np.float32) * scale
 
 
 def _gradcam_backward_gemm_i8(
