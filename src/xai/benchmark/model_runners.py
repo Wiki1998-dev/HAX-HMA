@@ -348,7 +348,7 @@ def build_toyadmos(seed: int = 42) -> ModelRunner:
             # Run decoder from bottleneck
             fmaps = feature_maps_override
             h = fmaps[0].flatten() if fmaps.ndim > 1 else fmaps.flatten()
-            for i in range(bottleneck_idx, len(fc_weights)):
+            for i in range(bottleneck_idx + 1, len(fc_weights)):
                 W, b = fc_weights[i], fc_biases[i]
                 h = h @ W + b
                 if i < len(fc_weights) - 1:

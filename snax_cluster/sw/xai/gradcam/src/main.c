@@ -1,7 +1,8 @@
 // Copyright 2024 KU Leuven.
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
-//
+//claude
+
 // Grad-CAM test harness for SNAX cluster.
 // DMA in feature maps + FC weights, compute saliency map, DMA out result.
 
