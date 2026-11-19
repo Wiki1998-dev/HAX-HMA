@@ -1,0 +1,10 @@
+{
+    n_features: 16,
+    n_classes: 10,
+    n_test_inputs: 16,
+    max_depth: 3,
+    top_k_features: 8,
+    n_train_samples: 500,
+    fixed_point_scale: 1024,
+    seed: 42
+}
