@@ -1,0 +1,9 @@
+// Grad-CAM on GeMMX — same shape as the fp32 Phase 1 kernel (GAP+FC model).
+{
+    h: 4,
+    w: 4,
+    K: 16,
+    C: 10,
+    target_class: 3,
+    seed: 42
+}

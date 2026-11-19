@@ -1,0 +1,9 @@
+// Grad-CAM on GeMMX — ResNet-8 hook layer (block3_b, 8x8x64), 10 classes.
+{
+    h: 8,
+    w: 8,
+    K: 64,
+    C: 10,
+    target_class: 3,
+    seed: 42
+}
