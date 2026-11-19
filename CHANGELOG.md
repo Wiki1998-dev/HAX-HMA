@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-19: ResNet-8 input-level Integrated Gradients and Gradient SHAP on GeMMX
+
+### Added
+- `resnet8_xai.py`: integer backward pass in GeMMX semantics, plus a float32 reference
+  (PyTorch autograd); static calibration.
+- `resnet8_xai_sched.py`: schedule with interpolation, forward with L3 activation spills,
+  rotated-kernel stride-1 and polyphase stride-2 transposed convs, DMA interleaves,
+  block-diagonal fork sums, chunked interior ReLU masks and attribution MAC.
+  Emulated bit-exactly.
+- `resnet8_xai_run.c`.
+- Measured, bit-exact: IG and Gradient SHAP 6,027,558 cycles each (16 samples,
+  inference fused).
+- Fidelity vs float32 over 50 images: r 0.946 (IG), 0.916 (SHAP).
+- `scripts/resnet8_xai_fidelity.py`, `docs/gemmx/RESNET8_XAI_GEMMX.md`.
+
 ## 2026-11-19: Real ResNet-8 + Grad-CAM on GeMMX; GeMMX configuration 30x cheaper
 
 ### Added

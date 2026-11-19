@@ -97,6 +97,7 @@ Grad-CAM on SNAX cluster (RISC-V scalar core, float32):
 Summary in `docs/gemmx/BENCHMARK.md`. Real int8 reference models + real data, bit-exact in Verilator:
 - ToyAdmos (`ad01_int8`, DCASE ToyCar): inference 9,227 cycles; IG / Gradient SHAP 91,517 incl. fused inference; AUC 0.8406 (TFLite 0.8416); attribution r 0.73 / 0.70 vs float32
 - ResNet-8 (`pretrainedResnet_quant`, CIFAR-10): inference ~53.6k; Grad-CAM +3,841 (7.2%); top-1 0.870 = TFLite; Grad-CAM r 0.997 vs float32
+- ResNet-8 input-level IG / Gradient SHAP (16 samples): 6,027,558 cycles each; r 0.946 / 0.916 vs float32 (`R8_METHOD=ig|shap R8X_N=16`; link sim traces to /dev/null for long runs)
 - Apps: `snax_cluster/sw/xai/toyadmos_gemmx/` (PROG=test_patterns|toyadmos_inference|toyadmos_ig|toyadmos_shap), `snax_cluster/sw/xai/resnet8_gemmx/` (R8_SAMPLE=k)
 - `toyadmos_gemmx/data/gemmx_sched.py`: launch builder + bit-exact GeMMX emulator + delta CSR codegen (~77 vs ~2,300 cycles/launch, see `docs/gemmx/CONFIG_OVERHEAD.md`)
 - Data: `external/` (git-ignored): MLPerf `tiny` clone, CIFAR-10 symlink, `toycar/` features (run `scripts/toyadmos_data.py` once)

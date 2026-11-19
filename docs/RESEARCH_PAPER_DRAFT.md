@@ -706,6 +706,8 @@ Cycle-accurate Verilator simulation of `snax_KUL_cluster`, real int8 reference m
 | ToyAdmos | Gradient SHAP (16 baselines), inference fused | 91,517 | 9.9× | 26% | r = 0.70 vs float32 |
 | ResNet-8 | inference | ≈ 53,600 | 1.00× | 67% | top-1 0.870 (TFLite 0.870) |
 | ResNet-8 | Grad-CAM, fused | +3,841 | 1.07× | — | r = 0.997 vs float32 |
+| ResNet-8 | Integrated Gradients (input level, 16 steps), inference fused | 6,027,558 | 112× | 21% | r = 0.946 vs float32 |
+| ResNet-8 | Gradient SHAP (input level, 16 baselines), inference fused | 6,027,558 | 112× | 21% | r = 0.916 vs float32 |
 
 **Mappings.**
 - **Gradient sampling:** the 16 IG / SHAP samples share each launch in the mesh rows. The anomaly score's gradient `Jᵀ(y − x̃) − (y − x̃)` uses a block-diagonal launch for `y − x̃` (scale ratio 59/55) and a transposer-based "diagonal" launch for `Σᵢ (x − bᵢ) ⊙ gᵢ`.
@@ -720,6 +722,11 @@ Cycle-accurate Verilator simulation of `snax_KUL_cluster`, real int8 reference m
 - Gradient-sampling XAI through a deep network does not (+890%). Measured against the detector's real-time frame budget (3.2M cycles per 32 ms window at 100 MHz) it is 2.9%.
 - After the configuration fix, the remaining XAI time is core-side ReLU masking (44%) and attribution gathering (20%).
 - Int8 gradients through 10 layers limit attribution fidelity (r ≈ 0.7, against 0.998 for the direct term).
+- **Input-level IG / SHAP on ResNet-8** run the full CNN backward pass on GeMMX:
+  - stride-1 transposed convs as rotated-kernel convs, with backward weights requantised per channel;
+  - stride-2 transposed convs as 4 polyphase launches plus a DMA interleave;
+  - residual fork sums as block-diagonal adds.
+- This costs 6.03M cycles per explanation (112× inference), with int8 maps at r = 0.95 (IG) / 0.92 (SHAP) vs float32. Core-side ReLU masking is 48% of that time.
 
 ## 9. Cumulative Results Summary
 

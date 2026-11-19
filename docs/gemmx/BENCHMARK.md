@@ -11,6 +11,8 @@ Every number below comes from a Verilator simulation of the `snax_KUL_cluster`: 
 | ToyAdmos | **Gradient SHAP**, 16 baselines, inference fused | **91,517** | 9.9× | 26% | r = 0.70 vs float32 SHAP |
 | ResNet-8 `pretrainedResnet_quant` | inference (1 CIFAR-10 image) | **≈ 53,600** | 1.00× | 67%* | top-1 0.870 (TFLite 0.870), 200 images |
 | ResNet-8 | **Grad-CAM**, fused | **+3,841** | **1.07×** | — | r = 0.997 vs float32 Grad-CAM (200 images) |
+| ResNet-8 | **Integrated Gradients** (input level, 16 steps), inference fused | **6,027,558** | 112× | 21% | r = 0.946 vs float32 IG (50 images) |
+| ResNet-8 | **Gradient SHAP** (input level, 16 baselines), inference fused | **6,027,558** | 112× | 21% | r = 0.916 vs float32 SHAP |
 
 *Busy share of the 57,461-cycle inference + Grad-CAM run.
 
@@ -23,14 +25,13 @@ Every number below comes from a Verilator simulation of the `snax_KUL_cluster`: 
 - **Accelerator utilisation > 90%.**
   - Not met: 55–67% for inference, 26% for ToyAdmos XAI.
   - Configuration is no longer the bottleneck (~77 cycles per launch after the fix, from ~2,300).
-  - The remaining XAI time is core-side work: ReLU masks of the backward pass (44%) and the attribution gather / combine (20%).
+  - The remaining XAI time is core-side work: ReLU masks of the backward pass (ToyAdmos 44%, ResNet-8 48%) and attribution reductions (20% / 10%).
 - **Faithfulness of int8 explanations.**
   - Grad-CAM: near-exact (r = 0.997).
-  - Gradient-sampling methods through a 10-layer int8 backward chain: r ≈ 0.7. The direct gradient term alone is r = 0.998; the loss of precision comes from carrying int8 gradients through the deep backward chain.
+  - Gradient-sampling methods: r ≈ 0.95 / 0.92 through the ResNet-8 CNN, but r ≈ 0.7 through the ToyAdmos 10-layer fully-connected autoencoder. There the direct gradient term alone is r = 0.998, so the loss comes from the deep int8 backward chain.
 
 ## Not yet measured
 
-- Input-level IG / SHAP for ResNet-8. It needs the convolution backward pass: transposed convolutions with stride, plus ReLU masks on 32×32×16 maps.
 - Time between frames: feature extraction (log-mel) for ToyAdmos, image capture for ResNet-8.
 - MobileBERT is out of scope: it has no integer softmax / layernorm kernels.
 
