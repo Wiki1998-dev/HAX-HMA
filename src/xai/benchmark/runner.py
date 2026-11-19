@@ -11,9 +11,10 @@ Each cell in the matrix reports **absolute SNAX cycles** and the
 
     overhead_pct = 100 * xai_cycles / inference_cycles
 
-The ``gap_fc`` row is populated from *measured* values (Phase 1 / 2b
-/ 4); every other row is estimated by the calibrated
-:mod:`src.xai.benchmark.cycle_model`.  Cells are tagged so the final
+The ``gap_fc`` row's XAI cells are *measured* values (Phase 1 / 2a / 2b
+/ 4); its inference cell is a planning budget, not a measurement.  Every
+other row is estimated by :mod:`src.xai.benchmark.cycle_model`, which is
+calibrated only on GAP+FC.  Cells are tagged so the final
 report is explicit about what was measured vs extrapolated.
 """
 
@@ -26,6 +27,7 @@ from typing import Dict, List, Optional
 
 from .models import MODEL_CATALOG, ModelSpec
 from .cycle_model import (
+    MEASURED_GAP_FC,
     DEFAULT_SNAX_COST,
     SnaxCostParams,
     estimate_gradcam_cycles,
@@ -42,11 +44,12 @@ from .cycle_model import (
 
 MEASURED: Dict[str, Dict[str, int]] = {
     "gap_fc": {
-        "inference":    12_000,   # base inference budget from Phase 5 plan
-        "gradcam":       6_153,   # Phase 1, verified 0/16 BIST errors
-        "shap_naive":  175_510,   # Phase 2a baseline
-        "shap_hoisted": 58_022,   # Phase 2b optimized
-        "symbolic":         47,   # Phase 4 depth-3 rule walk
+        # NOT a measurement: planning budget from the Phase 5 plan. No
+        # inference kernel has been simulated; overhead percentages for this
+        # row are relative to this budget.
+        "inference":    12_000,
+        # Verilator-measured XAI kernels (scalar core, fp32, N=16):
+        **MEASURED_GAP_FC,
     },
 }
 

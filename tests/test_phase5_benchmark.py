@@ -39,6 +39,7 @@ from src.xai.benchmark.cycle_model import (
     estimate_layer_cycles,
     estimate_shap_cycles,
     estimate_symbolic_cycles,
+    head_is_linear,
 )
 from src.xai.benchmark.hoisted_shap import (
     HoistedShapResult,
@@ -204,10 +205,9 @@ class TestCycleModel:
         model = get_model("gap_fc")
         assert estimate_symbolic_cycles(model) == 47
 
-    @pytest.mark.xfail(reason="Cost model not yet calibrated for Grad-CAM/SHAP")
     def test_calibration_strict(self):
-        """The cost model should stay within 15% of Phase 1/2b measurements."""
-        errors = _verify_calibration(tolerance=0.15)
+        """The cost model must stay within 5% of the GAP+FC measurements."""
+        errors = _verify_calibration(tolerance=0.05)
         assert errors == [], f"Calibration drift: {errors}"
 
     def test_inference_positive_for_all_models(self):
@@ -229,13 +229,23 @@ class TestCycleModel:
             assert cycles > 0, f"{name} Grad-CAM cycles must be positive"
 
     def test_shap_greater_than_hoisted(self):
-        """Naive SHAP should always cost more than hoisted SHAP."""
+        """Hoisting helps linear heads; non-linear heads fall back to naive."""
         for name, model in MODEL_CATALOG.items():
             naive = estimate_shap_cycles(model, n_samples=16)
             hoisted = estimate_hoisted_shap_cycles(model, n_samples=16)
-            assert naive > hoisted, (
-                f"{name}: naive({naive}) should exceed hoisted({hoisted})"
-            )
+            if head_is_linear(model):
+                assert naive > hoisted, (
+                    f"{name}: naive({naive}) should exceed hoisted({hoisted})"
+                )
+            else:
+                assert naive == hoisted, (
+                    f"{name}: non-linear head cannot hoist; "
+                    f"naive({naive}) != hoisted({hoisted})"
+                )
+
+    def test_toyadmos_head_is_nonlinear(self):
+        assert head_is_linear(get_model("gap_fc"))
+        assert not head_is_linear(get_model("toyadmos"))
 
     def test_symbolic_constant(self):
         """Symbolic rule cost is independent of model size."""
@@ -272,21 +282,26 @@ class TestCycleModel:
         cycles = estimate_layer_cycles(layer)
         assert cycles >= 0
 
-    @pytest.mark.xfail(reason="Cost model not yet calibrated for Grad-CAM")
     def test_gap_fc_gradcam_near_measured(self):
-        """GAP+FC Grad-CAM estimate must be close to 6,153 measured cycles."""
+        """GAP+FC Grad-CAM estimate must be close to 4,757 measured cycles."""
         model = get_model("gap_fc")
         predicted = estimate_gradcam_cycles(model)
-        err = abs(predicted - 6_153) / 6_153
-        assert err < 0.15, f"Grad-CAM gap_fc: predicted={predicted}, expected≈6153, err={err:.1%}"
+        err = abs(predicted - 4_757) / 4_757
+        assert err < 0.05, f"Grad-CAM gap_fc: predicted={predicted}, expected≈4757, err={err:.1%}"
 
-    @pytest.mark.xfail(reason="Cost model not yet calibrated for hoisted SHAP")
+    def test_gap_fc_naive_shap_near_measured(self):
+        """GAP+FC naive SHAP estimate must be close to 175,510 measured cycles."""
+        model = get_model("gap_fc")
+        predicted = estimate_shap_cycles(model, n_samples=16)
+        err = abs(predicted - 175_510) / 175_510
+        assert err < 0.05, f"Naive SHAP gap_fc: predicted={predicted}, err={err:.1%}"
+
     def test_gap_fc_hoisted_shap_near_measured(self):
         """GAP+FC hoisted SHAP estimate must be close to 58,022 measured cycles."""
         model = get_model("gap_fc")
         predicted = estimate_hoisted_shap_cycles(model, n_samples=16)
         err = abs(predicted - 58_022) / 58_022
-        assert err < 0.15, f"Hoisted SHAP gap_fc: predicted={predicted}, expected≈58022, err={err:.1%}"
+        assert err < 0.05, f"Hoisted SHAP gap_fc: predicted={predicted}, expected≈58022, err={err:.1%}"
 
 
 # ============================================================================

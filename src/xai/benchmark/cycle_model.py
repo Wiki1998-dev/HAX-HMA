@@ -9,24 +9,30 @@ simulation.  The model is deliberately simple:
   minimum cost to account for CSR programming.
 * **Scalar layers** (gap, layernorm, pool, embedding lookup) are
   modelled as ``macs / scalar_ops_per_cycle + scalar_overhead``.
-* **Method costs** for each XAI strategy are derived from the same
-  per-layer primitives plus strategy-specific constants measured in
-  phases 1, 2b and 4.
+* **XAI method costs** are modelled on the RISC-V *scalar* core, because
+  that is where the measured Phase 1/2 kernels run (no XAI kernel uses
+  the GeMM accelerator yet).  Each method is a sum of per-stage costs
+  whose structure mirrors the measured C kernels.
 
 Calibration
 -----------
 
-The constants in :class:`SnaxCostParams` are tuned so that the
-model-predicted value for the Phase 1 GAP+FC model lies within 5 %
-of the Phase 1/2b measurements:
+The per-element / per-MAC constants in :class:`SnaxCostParams` are fitted
+to the per-stage Verilator counters of the GAP+FC model (4x4x16, C=10):
 
-* Grad-CAM (GAP+FC) — measured ``6,153`` cycles.
-* Hoisted SHAP N=16 (GAP+FC) — measured ``58,022`` cycles.
-* Symbolic rule (depth ≤ 3) — measured ``47`` cycles on RV32IMF.
+* Grad-CAM — measured ``4,757`` cycles (2026-11-19, after fixing an
+  out-of-bounds read in the GAP step; the originally published 6,153
+  included ~1,400 cycles of that bug).
+* Naive Gradient SHAP N=16 (Phase 2a) — measured ``175,510`` cycles.
+* Hoisted Gradient SHAP N=16 (Phase 2b) — measured ``58,022`` cycles.
+* Symbolic rule (depth <= 3) — measured ``47`` cycles.
 
-The :func:`_verify_calibration` helper at the bottom of the module is
-used by :mod:`tests.test_phase5_benchmark` to assert that the
-calibration still holds any time we touch this file.
+:func:`_verify_calibration` asserts all four stay within tolerance.
+
+Only the GAP+FC numbers are calibrated.  Inference cycles (GeMM path) and
+every number for ResNet-8 / ToyAdmos / MobileBERT-tiny are *estimates*:
+they extrapolate the per-element constants to larger shapes and have not
+been checked against simulation.
 """
 
 from __future__ import annotations
@@ -52,21 +58,24 @@ class SnaxCostParams:
 
     Attributes:
         gemm_macs_per_cycle:   effective SNAX GeMM throughput (MAC/cyc)
+                               [inference only, uncalibrated]
         gemm_launch_overhead:  fixed cost per GeMM launch (CSR + DMA)
         gemm_min_cycles:       floor cost for any GeMM launch
-        scalar_ops_per_cycle:  RISC-V scalar core throughput
+        scalar_ops_per_cycle:  RISC-V scalar throughput for inference-side
+                               scalar layers [uncalibrated]
         scalar_overhead:       fixed cost per scalar kernel pass
-        memory_bytes_per_cycle: TCDM bandwidth used for memory-bound
-                               correction (unused if layer is compute-bound)
-        gradcam_bwd_scale:     per-MAC multiplier on the backward Grad-CAM
-                               pass (backward is more expensive per MAC
-                               than forward because of transpose-streaming)
-        gradcam_post_overhead: constant cost for ReLU + normalize
-        shap_accum_cycles_per_elem: per-element cost of the SHAP
-                               accumulation stage (dominant in Phase 2b)
-        shap_norm_overhead:    per-sample normalization cost
-        shap_launch_overhead:  per-SHAP-sample launch cost
-        symbolic_cycles:       constant cost of a depth-≤3 rule walk
+        memory_bytes_per_cycle: TCDM bandwidth (currently unused)
+        scalar_mac_cycles:     fp32 MAC (load-load-fmadd) on the scalar
+                               core; fits Grad-CAM transpose/gemm/wsum and
+                               SHAP backward (~7.3-7.9 measured)
+        gradcam_gap_cycles_per_chan: per-channel cost of the alpha step
+        gradcam_post_cycles_per_px:  ReLU + normalize per spatial position
+        shap_zero_cycles_per_elem:   accumulator clear
+        shap_interp_cycles_per_elem: x' + a(x - x') per element (2a only)
+        shap_gap_cycles_per_op:      GAP reduction in the head forward (2a)
+        shap_accum_cycles_per_elem:  (x - x') * grad per element, per sample
+        shap_norm_cycles_per_elem:   final division by N
+        symbolic_cycles:       constant cost of a depth-<=3 rule walk
     """
 
     gemm_macs_per_cycle: float = 16.0
@@ -75,11 +84,14 @@ class SnaxCostParams:
     scalar_ops_per_cycle: float = 1.0
     scalar_overhead: int = 64
     memory_bytes_per_cycle: float = 4.0
-    gradcam_bwd_scale: float = 2.0
-    gradcam_post_overhead: int = 180
-    shap_accum_cycles_per_elem: float = 12.0
-    shap_norm_overhead: int = 1_600
-    shap_launch_overhead: int = 250
+    scalar_mac_cycles: float = 7.5
+    gradcam_gap_cycles_per_chan: float = 3.0
+    gradcam_post_cycles_per_px: float = 20.0
+    shap_zero_cycles_per_elem: float = 4.0
+    shap_interp_cycles_per_elem: float = 12.0
+    shap_gap_cycles_per_op: float = 5.0
+    shap_accum_cycles_per_elem: float = 13.0
+    shap_norm_cycles_per_elem: float = 7.0
     symbolic_cycles: int = 47
 
 
@@ -163,54 +175,82 @@ def estimate_head_cycles(
 
 
 def _final_feature_elems(model: ModelSpec) -> int:
-    """Spatial × channel element count of the Grad-CAM hook layer.
+    """Spatial x channel element count of the Grad-CAM hook layer.
 
-    This counts the elements XAI operates on — e.g. the 4×4×16 = 256
+    This counts the elements XAI operates on — e.g. the 4x4x16 = 256
     elements of the final conv of the GAP+FC test model.
     """
     return model.final_feature_layer.feature_map_elems
+
+
+_GEMM_KINDS = ("conv", "depthwise_conv", "fc", "attention", "ffn")
+
+
+def _head_layers(model: ModelSpec) -> List[LayerSpec]:
+    return list(model.head) or [model.layers[-1]]
+
+
+def _head_gemm_macs(model: ModelSpec) -> int:
+    """MACs of every GeMM-type layer in the classification head."""
+    return sum(l.macs for l in _head_layers(model) if l.kind in _GEMM_KINDS)
+
+
+def _head_gap_ops(model: ModelSpec) -> int:
+    return sum(l.macs for l in _head_layers(model) if l.kind in ("gap", "pool"))
+
+
+def head_is_linear(model: ModelSpec) -> bool:
+    """True if the head has at most one GeMM layer (e.g. GAP + FC).
+
+    Backward hoisting (Phase 2b) is exact only for such heads; with
+    several GeMM layers there are non-linearities between them, so the
+    gradient must be recomputed per SHAP sample.
+    """
+    return sum(1 for l in _head_layers(model) if l.kind in _GEMM_KINDS) <= 1
 
 
 def estimate_gradcam_cycles(
     model: ModelSpec,
     params: SnaxCostParams = DEFAULT_SNAX_COST,
 ) -> int:
-    """Triggered-hook Grad-CAM overhead cycles on a model.
+    """Grad-CAM overhead cycles on the RISC-V scalar core.
 
-    The triggered-hook strategy described in Phase 5 §2, Method 1
-    reuses the feature maps already sitting in TCDM when the last
-    backbone GeMM completes.  The remaining work is:
+    Mirrors the measured kernel (``snax_cluster/sw/xai/gradcam``) stage by
+    stage; the backbone forward pass is excluded (already paid by
+    inference):
 
-    1. A **backward GeMM** over the head weights (``K × n_classes``
-       MACs with a transpose streamer, hence ``gradcam_bwd_scale``
-       cost multiplier).
-    2. A **weighted-sum** reduction over the feature maps (scalar).
-    3. A constant **ReLU + normalize** post-pass.
-
-    The result is the Grad-CAM *overhead* — it excludes the backbone
-    inference, which was already paid for by the model's forward pass.
+    1. transpose the head weights            — scalar_mac_cycles x head MACs
+    2. backward GeMM through the head        — scalar_mac_cycles x head MACs
+    3. alpha (GAP of the gradient)           — overhead + per-channel cost
+    4. weighted sum over the feature maps    — scalar_mac_cycles x E
+    5. ReLU + normalize                      — per spatial position
     """
-    head_fc = None
-    for layer in reversed(model.layers):
-        if layer.kind == "fc":
-            head_fc = layer
-            break
-    if head_fc is None:
-        # NLP models have an FFN/attention stack — use the last GeMM layer.
-        head_fc = model.layers[-1]
+    p = params
+    elems = _final_feature_elems(model)
+    k = max(1, _head_layers(model)[0].c_in)
+    hw = max(1, elems // k)
+    head_macs = _head_gemm_macs(model)
 
-    # (1) Backward GeMM: cost of a transpose-GeMM over head weights
-    bwd_macs = int(head_fc.macs * params.gradcam_bwd_scale)
-    bwd_cycles = _gemm_cycles(bwd_macs, params)
+    transpose = p.scalar_mac_cycles * head_macs
+    bwd = p.scalar_mac_cycles * head_macs
+    gap = p.scalar_overhead + p.gradcam_gap_cycles_per_chan * k
+    wsum = p.scalar_mac_cycles * elems
+    post = p.gradcam_post_cycles_per_px * hw
+    return int(transpose + bwd + gap + wsum + post)
 
-    # (2) Weighted sum over the feature maps
-    ws_ops = _final_feature_elems(model)
-    ws_cycles = _scalar_cycles(ws_ops, params)
 
-    # (3) ReLU + normalize
-    post_cycles = params.gradcam_post_overhead
+def _shap_head_fwd(model: ModelSpec, p: SnaxCostParams) -> float:
+    return (p.scalar_mac_cycles * _head_gemm_macs(model)
+            + p.shap_gap_cycles_per_op * _head_gap_ops(model))
 
-    return bwd_cycles + ws_cycles + post_cycles
+
+def _shap_head_bwd(model: ModelSpec, p: SnaxCostParams) -> float:
+    """Gradient w.r.t. the hook features: broadcast over E elements, plus a
+    backward pass through any extra head GeMM layers (non-linear heads)."""
+    bwd = p.scalar_mac_cycles * _final_feature_elems(model)
+    if not head_is_linear(model):
+        bwd += p.scalar_mac_cycles * _head_gemm_macs(model)
+    return bwd
 
 
 def estimate_shap_cycles(
@@ -218,18 +258,21 @@ def estimate_shap_cycles(
     n_samples: int = 16,
     params: SnaxCostParams = DEFAULT_SNAX_COST,
 ) -> int:
-    """Naive Gradient-SHAP overhead cycles (Phase 2a style).
+    """Naive Gradient-SHAP overhead cycles (Phase 2a structure, scalar core).
 
-    Runs ``n_samples`` full forward + backward passes through the entire
-    model.  This is the "before hoisting" cost used in the comparison
-    matrix to illustrate why we needed Phase 2b.
+    Attribution is over the hook-layer features (as in the measured
+    kernel), so each sample re-runs the head, not the backbone:
+    ``zero + N x (interp + head_fwd + head_bwd + accum) + norm``.
     """
-    per_sample_fwd = estimate_inference_cycles(model, params)
-    # A backward pass is modelled with the same cost scale as Grad-CAM's
-    # transpose-GeMM (gradcam_bwd_scale) applied to every GeMM layer.
-    per_sample_bwd = int(per_sample_fwd * params.gradcam_bwd_scale * 0.5)
-    per_sample = per_sample_fwd + per_sample_bwd + params.shap_launch_overhead
-    return n_samples * per_sample + params.shap_norm_overhead
+    p = params
+    e = _final_feature_elems(model)
+    per_sample = (p.shap_interp_cycles_per_elem * e
+                  + _shap_head_fwd(model, p)
+                  + _shap_head_bwd(model, p)
+                  + p.shap_accum_cycles_per_elem * e)
+    return int(p.shap_zero_cycles_per_elem * e
+               + n_samples * per_sample
+               + p.shap_norm_cycles_per_elem * e)
 
 
 def estimate_hoisted_shap_cycles(
@@ -237,36 +280,23 @@ def estimate_hoisted_shap_cycles(
     n_samples: int = 16,
     params: SnaxCostParams = DEFAULT_SNAX_COST,
 ) -> int:
-    """Backward-hoisted Gradient-SHAP overhead cycles (Phase 2b style).
+    """Backward-hoisted Gradient-SHAP cycles (Phase 2b structure, scalar core).
 
-    Only the *head* of the network is re-run for each SHAP sample; the
-    backbone feature maps are produced exactly once and reused.  The
-    cost breakdown mirrors the Phase 2b per-stage counters:
+    For a linear head the gradient is constant along the integration path,
+    so it is computed once and only the accumulation runs per sample:
+    ``zero + bwd + N x accum + norm`` (matches the 2b per-stage counters).
 
-    * ``zero``     – constant buffer zeroing cost
-    * ``bwd``      – one backward GeMM over the head weights
-    * ``accum``    – per-sample element-wise accumulation (dominant)
-    * ``norm``     – final division by ``n_samples``
-
-    The backbone cost is *not* included — that is already paid by the
-    model's ordinary inference pass.  Therefore this function reports
-    the pure XAI overhead relative to baseline inference.
+    For a non-linear head hoisting is not exact, so this falls back to the
+    naive cost (see :func:`head_is_linear`).
     """
-    head = model.head or [model.layers[-1]]
-
-    # Head forward + backward per SHAP sample
-    head_fwd = sum(estimate_layer_cycles(layer, params) for layer in head)
-    head_bwd = int(head_fwd * params.gradcam_bwd_scale * 0.5)
-
-    # Accumulation over feature-map elements (element-wise)
-    elems = _final_feature_elems(model)
-    accum_per_sample = int(elems * params.shap_accum_cycles_per_elem)
-
-    per_sample = head_fwd + head_bwd + accum_per_sample + params.shap_launch_overhead
-    zero_cycles = params.scalar_overhead + elems  # one pass to zero buffer
-    norm_cycles = params.shap_norm_overhead + elems
-
-    return zero_cycles + n_samples * per_sample + norm_cycles
+    if not head_is_linear(model):
+        return estimate_shap_cycles(model, n_samples, params)
+    p = params
+    e = _final_feature_elems(model)
+    return int(p.shap_zero_cycles_per_elem * e
+               + _shap_head_bwd(model, p)
+               + n_samples * p.shap_accum_cycles_per_elem * e
+               + p.shap_norm_cycles_per_elem * e)
 
 
 def estimate_symbolic_cycles(
@@ -289,7 +319,16 @@ def estimate_symbolic_cycles(
 # ---------------------------------------------------------------------------
 
 
-def _verify_calibration(tolerance: float = 0.15) -> List[str]:
+#: Verilator measurements on the GAP+FC model (scalar core, fp32, N=16).
+MEASURED_GAP_FC = {
+    "gradcam": 4_757,
+    "shap_naive": 175_510,
+    "shap_hoisted": 58_022,
+    "symbolic": 47,
+}
+
+
+def _verify_calibration(tolerance: float = 0.05) -> List[str]:
     """Return a list of calibration error messages, empty if OK.
 
     The Phase 5 tests call this to make sure we have not regressed the
@@ -307,7 +346,9 @@ def _verify_calibration(tolerance: float = 0.15) -> List[str]:
                 f"{name}: predicted={predicted} expected={expected} err={err:.1%}"
             )
 
-    _check("gradcam_gap_fc", estimate_gradcam_cycles(gap_fc), 6_153)
-    _check("hoisted_shap_gap_fc", estimate_hoisted_shap_cycles(gap_fc, 16), 58_022)
-    _check("symbolic_gap_fc", estimate_symbolic_cycles(gap_fc), 47)
+    _check("gradcam_gap_fc", estimate_gradcam_cycles(gap_fc), MEASURED_GAP_FC["gradcam"])
+    _check("naive_shap_gap_fc", estimate_shap_cycles(gap_fc, 16), MEASURED_GAP_FC["shap_naive"])
+    _check("hoisted_shap_gap_fc", estimate_hoisted_shap_cycles(gap_fc, 16),
+           MEASURED_GAP_FC["shap_hoisted"])
+    _check("symbolic_gap_fc", estimate_symbolic_cycles(gap_fc), MEASURED_GAP_FC["symbolic"])
     return errors
