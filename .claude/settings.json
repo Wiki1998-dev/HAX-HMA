@@ -2,24 +2,38 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|Bash",
-        "command": "code-review-graph update --skip-flows",
-        "timeout": 5000
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/code-review-graph update --skip-flows",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionStart": [
       {
-        "command": "code-review-graph status",
-        "timeout": 3000
-      }
-    ],
-    "PreCommit": [
-      {
-        "command": "code-review-graph detect-changes --brief",
-        "timeout": 10000
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/code-review-graph status",
+            "timeout": 3
+          }
+        ]
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -e '.tool_input.command | test(\"^\\\\s*git\\\\s+commit\")' >/dev/null && \"$CLAUDE_PROJECT_DIR\"/.venv/bin/code-review-graph detect-changes --brief || true",
+            "timeout": 10
+          }
+        ]
+      },
       {
         "matcher": "Glob|Grep",
         "hooks": [

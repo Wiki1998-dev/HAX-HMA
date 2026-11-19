@@ -50,3 +50,12 @@ setup_claude_context.sh
 # Root-level copies (actual files are in src/ and tests/)
 /gradcam_reference.py
 /test_gradcam_reference.py
+
+# Local simulator/config backups (not versioned)
+.sim_backup/
+
+# External reference repos and datasets (MLPerf Tiny clone, CIFAR-10 link, DCASE audio)
+/external/
+
+# Browser partial downloads
+*.crdownload
