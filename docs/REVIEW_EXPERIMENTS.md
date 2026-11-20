@@ -20,7 +20,7 @@ Results for the reviewer's experiment list. The paper is unchanged. Every number
 | 2 | ToyAdmos IG / SHAP r (100 windows) | 0.732 [0.668, 0.792] (min −0.264) / 0.707 [0.643, 0.770] (min −0.342) |
 | 3 | Calibration, held-out training windows (IG / SHAP r) | exact@99.5: 0.743 / 0.703 (best); pow2@99.5: 0.740 / 0.701 (n.s.); exact@99.9: 0.710 / 0.663; pow2@99.9: 0.641 / 0.602 |
 | 4 | IG completeness, median / p90 rel. error | ResNet-8 float32 0.28 / 2.51, int8 0.41 / 2.60 (small Δf in the tail); ToyAdmos float32 0.09 / 0.70, int8 0.04 / 0.12 |
-| 5 | Activations at +127 | 0.000% at masked positions (both models); masking them changes r by 0 |
+| 5 | Activations at +127 at masked positions | none in ToyAdmos or ResNet-8 IG; 3 of 200 ResNet-8 SHAP images (<= 0.0008% of add1); masking them changes r by < 1e-5 |
 | 6 | MACs launched | ResNet-8 inference + Grad-CAM 13.77M (not 14.82M); useful utilisation confirmed: 5.6% / 18.0% / 42.5% / 13.0%; KWS 9.7%, VWW 7.7% |
 | 7 | Data-dependent branches in mask / MAC / interleave | none (verified in the binary) |
 | 8 | Grad-CAM at the block-2 output, r | 0.984 [0.982, 0.985] (cycles not run) |
@@ -241,9 +241,12 @@ python scripts/review_experiments.py 5 --images 200
 
 **Seeds:** same inputs as item 2
 
-**Finding:** no forward activation at a masked position reaches +127. This holds in ResNet-8 (200 images × 16 interpolated samples × 7 masked tensors) and in ToyAdmos (100 windows × 16 samples × 9 ReLU layers): the fraction is 0.000% everywhere.
+**Finding:** saturation at +127 at masked positions is essentially absent, but not zero.
+- **ToyAdmos** (100 windows x 16 samples x 9 ReLU layers): never reaches +127.
+- **ResNet-8 IG** (200 images x 16 samples x 7 masked tensors): never reaches +127.
+- **ResNet-8 SHAP:** reaches +127 in 3 of 200 images, only in the first residual add, at most 0.0008% of its activations. That is why the per-tensor means print as 0.000%.
 
-**Effect of also masking +127:** zero. The r values are identical to 4 decimals. ToyAdmos: 0 windows change. ResNet-8: 0 images change for IG; for SHAP 3 images change by less than 1e-5 in r (+127 does occur in interpolated samples, but not at masked positions).
+**Effect of also masking +127:** negligible. The r values are identical to 4 decimals. ToyAdmos: 0 windows change. ResNet-8 IG: 0 images change. ResNet-8 SHAP: the 3 images above change by less than 1e-5 in r.
 
 For contrast, the zero-point fraction (gradient masked) is 25–73% per tensor.
 
@@ -260,6 +263,9 @@ ToyAdmos: fraction of hidden-layer outputs (ReLU layers 1-9) at +127, 100 window
   shap: L1 0.000%  L2 0.000%  L3 0.000%  L4 0.000%  L5 0.000%  L6 0.000%  L7 0.000%  L8 0.000%  L9 0.000%
   ig: r with +127 masked 0.7315 vs 0.7315; paired diff +0.00000 95% CI [+0.00000, +0.00000]; windows changed 0
   shap: r with +127 masked 0.7072 vs 0.7072; paired diff +0.00000 95% CI [+0.00000, +0.00000]; windows changed 0
+Follow-up: per-image +127 fractions (ResNet-8, masked tensors conv1 b1c1 add1 b2c1 add2 b3c1 add3)
+  ig: images with any +127: 0 / 200; max fraction per tensor (%): [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  shap: images with any +127: 3 / 200; max fraction per tensor (%): [0.0, 0.0, 0.00076, 0.0, 0.0, 0.0, 0.0]
 ```
 
 ## 6. Utilisation check (MACs launched)

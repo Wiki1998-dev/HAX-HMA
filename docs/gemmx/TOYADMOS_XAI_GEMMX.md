@@ -47,7 +47,7 @@ The remaining XAI time is core work: ReLU masks (44%) and attribution gather / c
 |---|---|
 | Interpolate 16 samples | `X~ = [alpha │ diag(16−alpha)] @ [x; b₁..b₁₆] / 16`; x placed by a 2-D DMA |
 | Forward | 16 samples stacked in mesh rows; layer 1 K-split ×5, layer 10 N-split ×5; ReLU via the requantiser clamp |
-| Loss gradient | `g_y ∝ y − x~ = [x~ │ y] @ [−59·I; 55·I]` (59/55 = s_x/s_y to 0.001%), in place |
+| Loss gradient | `g_y ∝ y − x~ = [x~ │ y] @ [−59·I; 55·I]` (59/55 = s_x/s_y to 0.003%), in place |
 | Backward | `g ← (g ⊙ mask) @ W_l` (TFLite's (out, in) weights are already GeMMX's B layout); masks on both cores |
 | Attribution | `Σᵢ D⊙(Jᵀg)` and `Σᵢ D⊙g_y` via the diagonal trick (A and B transposers); `attr = m₀·net − m₁·direct` on the core |
 

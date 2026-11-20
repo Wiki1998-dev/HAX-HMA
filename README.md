@@ -180,13 +180,13 @@ Details: `docs/phase1/` … `docs/phase5/`.
 - M. Sundararajan, A. Taly, Q. Yan, "Axiomatic Attribution for Deep Networks" (Integrated Gradients), ICML 2017.
 - S. M. Lundberg and S.-I. Lee, "A Unified Approach to Interpreting Model Predictions" (SHAP), NeurIPS 2017.
 - C. Banbury et al., "MLPerf Tiny Benchmark," NeurIPS Datasets and Benchmarks Track, 2021.
-- G. Paulin et al., "SNAX: An Open-Source HW-SW Co-Development Framework Enabling Efficient Multi-Accelerator Systems," KU Leuven MICAS, 2025.
+- R. A. Antonio, J. Dumoulin, X. Yi, J. Van Delm, Y. Deng, G. Paim, M. Verhelst, "An Open-Source HW-SW Co-Development Framework Enabling Efficient Multi-Accelerator Systems," ISLPED 2025, arXiv:2508.14582.
 - Z. Pan and P. Mishra, "Hardware Acceleration of Explainable Artificial Intelligence," arXiv:2305.04887, 2023.
 - Z. Zhang et al., "QVIP: An ILP-based Formal Verification Approach for Quantized Neural Networks," ASE 2022.
-- D. Becking et al., "ECQx: Explainability-Driven Quantization for Low-Bit and Sparse DNNs," arXiv:2109.04236, 2022.
+- D. Becking, M. Dreyer, W. Samek, K. Müller, S. Lapuschkin, "ECQx: Explainability-Driven Quantization for Low-Bit and Sparse DNNs," arXiv:2109.04236, 2022.
 - S. Bach et al., "On Pixel-Wise Explanations for Non-Linear Classifier Decisions by Layer-Wise Relevance Propagation," PLOS ONE, 2015.
 - H. Genc et al., "Gemmini: Enabling Systematic Deep-Learning Architecture Evaluation via Full-Stack Integration," DAC 2021.
-- B. Fresz, M. Langer, M. T. P. Adam, "The Contribution of XAI for the Safe Development and Certification of AI," arXiv:2408.02379, 2024.
+- B. Fresz, V. P. Göbels, S. Omri, D. Brajovic, A. Aichele, J. Kutz, J. Neuhüttler, M. F. Huber, "The Contribution of XAI for the Safe Development and Certification of AI: An Expert-Based Analysis," arXiv:2408.02379, 2024.
 
 ## License
 
